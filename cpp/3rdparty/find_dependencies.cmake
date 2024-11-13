@@ -46,5 +46,6 @@ find_external_dependency("OpenCV" "opencv_features2d"
                          "${CMAKE_CURRENT_LIST_DIR}/opencv/opencv.cmake")
 find_external_dependency("tsl-robin-map" "tsl::robin_map"
                          "${CMAKE_CURRENT_LIST_DIR}/tsl_robin/tsl_robin.cmake")
+find_external_dependency("optimization" "graph" "${CMAKE_CURRENT_LIST_DIR}/optimization/optimization.cmake")
 
 include(${CMAKE_CURRENT_LIST_DIR}/hbst/hbst.cmake)

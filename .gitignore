@@ -127,3 +127,7 @@ __pypackages__/
 
 # Polyscope
 *.ini
+
+# Data
+data/
+output/

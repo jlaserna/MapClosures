@@ -72,9 +72,7 @@ static constexpr int __RANSAC_TRIALS__ = std::ceil(
 
 namespace map_closures {
 
-PointPair::PointPair(const Eigen::Vector2d &r, const Eigen::Vector2d &q) : ref(r), query(q) {}
-
-std::pair<Eigen::Isometry2d, int> RansacAlignment2D(const std::vector<PointPair> &keypoint_pairs) {
+std::tuple<Eigen::Isometry2d, int, std::vector<PointPair>> RansacAlignment2D(const std::vector<PointPair> &keypoint_pairs) {
     const size_t max_inliers = keypoint_pairs.size();
 
     std::vector<PointPair> sample_keypoint_pairs(2);
@@ -112,6 +110,11 @@ std::pair<Eigen::Isometry2d, int> RansacAlignment2D(const std::vector<PointPair>
                    inlier_keypoint_pairs.begin(),
                    [&](const auto index) { return keypoint_pairs[index]; });
     auto T = KabschUmeyamaAlignment2D(inlier_keypoint_pairs);
-    return {T, num_inliers};
+
+    std::vector<PointPair> inliers(num_inliers);
+    std::transform(optimal_inlier_indices.cbegin(), optimal_inlier_indices.cend(), inliers.begin(),
+                   [&](const auto index) { return keypoint_pairs[index]; });
+
+    return {T, num_inliers, inliers};
 }
 }  // namespace map_closures

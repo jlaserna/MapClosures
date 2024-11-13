@@ -1,7 +1,6 @@
 // MIT License
 //
-// Copyright (c) 2024 Saurabh Gupta, Tiziano Guadagnino, Benedikt Mersch,
-// Ignacio Vizzo, Cyrill Stachniss.
+// Copyright (c) 2024 Javier Laserna
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -32,6 +31,6 @@
 
 namespace map_closures {
 
-std::tuple<Eigen::Isometry2d, int, std::vector<PointPair>> RansacAlignment2D(const std::vector<PointPair> &keypoint_pairs);
+std::tuple<Eigen::Isometry2d, int, std::vector<PointPair>> CliRegAlignment2D(const std::vector<PointPair> &keypoint_pairs);
 
 }  // namespace map_closures

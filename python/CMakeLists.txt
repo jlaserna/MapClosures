@@ -32,6 +32,13 @@ set(PYBIND11_NEWPYTHON ON)
 find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
 find_package(pybind11 CONFIG REQUIRED)
 
+# Set the GITHUB_TOKEN environment variable
+if(DEFINED ENV{GITHUB_TOKEN})
+  set(GITHUB_TOKEN $ENV{GITHUB_TOKEN})
+else()
+  message(FATAL_ERROR "GITHUB_TOKEN is not set.")
+endif()
+
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../cpp/ ${CMAKE_CURRENT_BINARY_DIR}/map_closures)
 
 add_subdirectory(map_closures/pybind)

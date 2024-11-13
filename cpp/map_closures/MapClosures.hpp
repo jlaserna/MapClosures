@@ -32,6 +32,7 @@
 #include <vector>
 
 #include "DensityMap.hpp"
+#include "AlignRansac2D.hpp"
 #include "srrg_hbst/types/binary_tree.hpp"
 
 static constexpr int descriptor_size_bits = 256;
@@ -51,6 +52,8 @@ struct ClosureCandidate {
     int target_id = -1;
     Eigen::Matrix4d pose = Eigen::Matrix4d::Identity();
     size_t number_of_inliers = 0;
+    std::vector<std::pair<Eigen::Vector2d, Eigen::Vector2d>> keypoint_pairs;
+    std::vector<std::pair<Eigen::Vector2d, Eigen::Vector2d>> inliers;
 };
 
 class MapClosures {
