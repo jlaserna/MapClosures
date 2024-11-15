@@ -32,6 +32,7 @@
 #include <opencv2/core.hpp>
 #include <utility>
 #include <vector>
+#include <chrono>
 
 #include "AlignRansac2D.hpp"
 #include "AlignCliReg2D.hpp"
@@ -119,9 +120,22 @@ ClosureCandidate MapClosures::ValidateClosure(const int reference_id, const int 
                 auto query_point = to_world_point(match.object_query.pt, qry_map_lower_bound);
                 return PointPair(ref_point, query_point);
             });
-            
-        //const auto &[pose2d, number_of_inliers, inliers] = RansacAlignment2D(keypoint_pairs);
-        const auto &[pose2d, number_of_inliers, inliers] = CliRegAlignment2D(keypoint_pairs);
+        Eigen::Isometry2d pose2d;
+        int number_of_inliers;
+        std::vector<PointPair> inliers;
+        const auto start = std::chrono::high_resolution_clock::now();
+        switch (config_.alignment_algorithm) {
+            case AlignmentAlgorithm::RANSAC: {
+                std::tie(pose2d, number_of_inliers, inliers) = RansacAlignment2D(keypoint_pairs);
+                break;
+            }
+            case AlignmentAlgorithm::CLIREG: {
+                std::tie(pose2d, number_of_inliers, inliers) = CliRegAlignment2D(keypoint_pairs);
+                break;
+            }
+        }
+        const auto end = std::chrono::high_resolution_clock::now();
+        closure.alignment_time = std::chrono::duration<double, std::milli>(end - start).count();
         closure.source_id = reference_id;
         closure.target_id = query_id;
         closure.pose.block<2, 2>(0, 0) = pose2d.linear();

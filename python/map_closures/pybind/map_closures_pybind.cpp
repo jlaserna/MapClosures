@@ -48,6 +48,7 @@ Config GetConfigFromYAML(const py::dict &yaml_cfg) {
     cpp_config.density_threshold = yaml_cfg["density_threshold"].cast<float>();
     cpp_config.density_map_resolution = yaml_cfg["density_map_resolution"].cast<float>();
     cpp_config.hamming_distance_threshold = yaml_cfg["hamming_distance_threshold"].cast<int>();
+    cpp_config.alignment_algorithm = AlignmentAlgorithm(yaml_cfg["alignment_algorithm"].cast<int>());
     return cpp_config;
 }
 
@@ -63,7 +64,8 @@ PYBIND11_MODULE(map_closures_pybind, m) {
         .def_readwrite("pose", &ClosureCandidate::pose)
         .def_readwrite("number_of_inliers", &ClosureCandidate::number_of_inliers)
         .def_readwrite("keypoint_pairs", &ClosureCandidate::keypoint_pairs)
-        .def_readwrite("inliers", &ClosureCandidate::inliers);
+        .def_readwrite("inliers", &ClosureCandidate::inliers)
+        .def_readwrite("alignment_time", &ClosureCandidate::alignment_time);
 
     py::class_<MapClosures, std::shared_ptr<MapClosures>> map_closures(m, "_MapClosures", "");
     map_closures

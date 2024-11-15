@@ -41,10 +41,12 @@ using Node = srrg_hbst::BinaryNode<Matchable>;
 using Tree = srrg_hbst::BinaryTree<Node>;
 
 namespace map_closures {
+enum class AlignmentAlgorithm { RANSAC, CLIREG };
 struct Config {
     float density_map_resolution = 0.5;
     float density_threshold = 0.05;
     int hamming_distance_threshold = 50;
+    AlignmentAlgorithm alignment_algorithm = AlignmentAlgorithm::RANSAC;
 };
 
 struct ClosureCandidate {
@@ -54,6 +56,7 @@ struct ClosureCandidate {
     size_t number_of_inliers = 0;
     std::vector<std::pair<Eigen::Vector2d, Eigen::Vector2d>> keypoint_pairs;
     std::vector<std::pair<Eigen::Vector2d, Eigen::Vector2d>> inliers;
+    double alignment_time = 0.0;
 };
 
 class MapClosures {

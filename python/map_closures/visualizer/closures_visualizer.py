@@ -73,6 +73,7 @@ class LoopClosureData:
     alignment_pose: list = field(default_factory=list)
     keypoints_pairs: list = field(default_factory=list)
     inliers: list = field(default_factory=list)
+    alignment_time: list = field(default_factory=list)
 
 
 @dataclass
@@ -109,7 +110,7 @@ class ClosuresVisualizer:
         self.show_outliers = False
         self.update_connection_visibility = None
 
-    def update_closures(self, alignment_pose, closure_edge, keypoints_pairs, inliers):
+    def update_closures(self, alignment_pose, closure_edge, keypoints_pairs, inliers, alignment_time):
         self.data.closure_edges.append(closure_edge)
         self.data.alignment_pose.append(alignment_pose)
         self.data.size += 1
@@ -120,6 +121,7 @@ class ClosuresVisualizer:
             self._render_closure()
         self.data.keypoints_pairs.append(keypoints_pairs)
         self.data.inliers.append(inliers)
+        self.data.alignment_time.append(alignment_time)
 
     def matplotlib_eventloop(self):
         plt.gcf().canvas.draw()
@@ -208,6 +210,8 @@ class ClosuresVisualizer:
                 )
                 keypoints_pairs = self.data.keypoints_pairs[id]
                 inliers = set((tuple(ref_kp), tuple(query_kp)) for ref_kp, query_kp in self.data.inliers[id])
+                alignment_time = self.data.alignment_time[id]
+                self.fig.suptitle(f"Alignment Time: {alignment_time:.2f}ms, Inliers: {len(inliers)}")
                 
                 def is_within_limits(point, ax):
                     xlim = ax.get_xlim()

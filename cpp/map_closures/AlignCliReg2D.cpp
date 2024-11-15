@@ -73,16 +73,15 @@ namespace map_closures {
 std::tuple<Eigen::Isometry2d, int, std::vector<PointPair>> CliRegAlignment2D(const std::vector<PointPair> &keypoint_pairs) {
     const size_t max_inliers = keypoint_pairs.size();
 
-    std::vector<int> optimal_inlier_indices;
-    optimal_inlier_indices.reserve(max_inliers);
-
     ugraph graph;
 
     graph.init(keypoint_pairs.size());
 
     for (int i = 0; i < keypoint_pairs.size(); i++) {
         for (int j = i + 1; j < keypoint_pairs.size(); j++) {
-            if ((keypoint_pairs[i].ref - keypoint_pairs[j].ref).norm() < inliers_distance_threshold) {
+            float ref_dist = (keypoint_pairs[i].ref - keypoint_pairs[j].ref).norm();
+            float query_dist = (keypoint_pairs[i].query - keypoint_pairs[j].query).norm();
+            if (std::abs(ref_dist - query_dist) < inliers_distance_threshold) {
                 graph.add_edge(i, j);
             }
         }
@@ -95,7 +94,7 @@ std::tuple<Eigen::Isometry2d, int, std::vector<PointPair>> CliRegAlignment2D(con
         return {Eigen::Isometry2d::Identity(), 0, {}};
     }
 
-    auto ret_status = cliqueGraphRun(graph, 2, 0, 0, 1, 1, vertices, "", true);
+    auto ret_status = cliqueGraphRun(graph, 2, 0, 0, 1, 1, vertices, "", false);
 
     if (ret_status == ERR) {
         return {Eigen::Isometry2d::Identity(), 0, {}};

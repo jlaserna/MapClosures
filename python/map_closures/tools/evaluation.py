@@ -168,7 +168,7 @@ class EvaluationPipeline(StubEvaluation):
     def _rich_table_pr(self, table_format: box.Box = box.HORIZONTALS) -> Table:
         table = Table(box=table_format)
         table.caption = f"Loop Closure Evaluation Metrics\n"
-        table.add_column("RANSAC #Inliers", justify="center", style="cyan")
+        table.add_column("#Inliers", justify="center", style="cyan")
         table.add_column("True Positives", justify="center", style="magenta")
         table.add_column("False Positives", justify="center", style="magenta")
         table.add_column("False Negatives", justify="center", style="magenta")
