@@ -37,32 +37,6 @@ enum ret_t  { ERR=-1, OPT, UNKNOWN };
 ret_t cliqueGraphRun(ugraph graph, int alg, int ord, int AMTS, double TIME_LIMIT, double TIME_LIMIT_HEUR, vint &vertices, string filename, bool verbose);
 
 namespace {
-Eigen::Isometry2d KabschUmeyamaAlignment2D(
-    const std::vector<map_closures::PointPair2D> &keypoint_pairs) {
-    auto mean = std::reduce(keypoint_pairs.cbegin(), keypoint_pairs.cend(),
-                            map_closures::PointPair2D(), [](auto lhs, const auto &rhs) {
-                                lhs.ref += rhs.ref;
-                                lhs.query += rhs.query;
-                                return lhs;
-                            });
-    mean.query /= keypoint_pairs.size();
-    mean.ref /= keypoint_pairs.size();
-    auto covariance_matrix = std::transform_reduce(
-        keypoint_pairs.cbegin(), keypoint_pairs.cend(), Eigen::Matrix2d().setZero(),
-        std::plus<Eigen::Matrix2d>(), [&](const auto &keypoint_pair) {
-            return (keypoint_pair.ref - mean.ref) *
-                   ((keypoint_pair.query - mean.query).transpose());
-        });
-
-    Eigen::JacobiSVD<Eigen::Matrix2d> svd(covariance_matrix,
-                                          Eigen::ComputeFullU | Eigen::ComputeFullV);
-    Eigen::Isometry2d T = Eigen::Isometry2d::Identity();
-    const Eigen::Matrix2d &&R = svd.matrixV() * svd.matrixU().transpose();
-    T.linear() = R.determinant() > 0 ? R : -R;
-    T.translation() = mean.query - R * mean.ref;
-
-    return T;
-}
 
 static constexpr double inliers_distance_threshold = 3.0;
 
@@ -70,8 +44,14 @@ static constexpr double inliers_distance_threshold = 3.0;
 
 namespace map_closures {
 
-std::tuple<Eigen::Isometry2d, int, std::vector<PointPair2D>> CliRegAlignment2D(const std::vector<PointPair2D> &keypoint_pairs) {
-    const size_t max_inliers = keypoint_pairs.size();
+std::tuple<Eigen::Isometry3d, int, std::vector<PointPair>> CliRegAlignment3D(
+    pcl::PointCloud<pcl::PointXYZ>::Ptr reference_keypoints,
+    pcl::PointCloud<pcl::PointXYZ>::Ptr query_keypoints,
+    pcl::CorrespondencesPtr correspondences) {
+
+    return {Eigen::Isometry3d::Identity(), 0, {}};
+
+    /*const size_t max_inliers = keypoint_pairs.size();
 
     ugraph graph;
 
@@ -91,22 +71,22 @@ std::tuple<Eigen::Isometry2d, int, std::vector<PointPair2D>> CliRegAlignment2D(c
 
     // Check if the graph is empty
     if (graph.number_of_vertices() == 0) {
-        return {Eigen::Isometry2d::Identity(), 0, {}};
+        return {Eigen::Isometry3d::Identity(), 0, {}};
     }
 
     auto ret_status = cliqueGraphRun(graph, 2, 0, 0, 1, 1, vertices, "", false);
 
     if (ret_status == ERR) {
-        return {Eigen::Isometry2d::Identity(), 0, {}};
+        return {Eigen::Isometry3d::Identity(), 0, {}};
     }
 
-    std::vector<PointPair2D> inliers(vertices.size());
+    std::vector<PointPair> inliers(vertices.size());
     std::transform(vertices.cbegin(), vertices.cend(), inliers.begin(),
                    [&](const auto index) { return keypoint_pairs[index]; });
 
-    auto T = KabschUmeyamaAlignment2D(inliers);
+    auto T = KabschUmeyamaAlignment3D(inliers);
 
-    return {T, vertices.size(), inliers};
+    return {T, vertices.size(), inliers};*/
 }
 
 }  // namespace map_closures

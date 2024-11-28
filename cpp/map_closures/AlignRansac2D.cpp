@@ -34,9 +34,9 @@
 
 namespace {
 Eigen::Isometry2d KabschUmeyamaAlignment2D(
-    const std::vector<map_closures::PointPair> &keypoint_pairs) {
+    const std::vector<map_closures::PointPair2D> &keypoint_pairs) {
     auto mean = std::reduce(keypoint_pairs.cbegin(), keypoint_pairs.cend(),
-                            map_closures::PointPair(), [](auto lhs, const auto &rhs) {
+                            map_closures::PointPair2D(), [](auto lhs, const auto &rhs) {
                                 lhs.ref += rhs.ref;
                                 lhs.query += rhs.query;
                                 return lhs;
@@ -72,10 +72,10 @@ static constexpr int __RANSAC_TRIALS__ = std::ceil(
 
 namespace map_closures {
 
-std::tuple<Eigen::Isometry2d, int, std::vector<PointPair>> RansacAlignment2D(const std::vector<PointPair> &keypoint_pairs) {
+std::tuple<Eigen::Isometry2d, int, std::vector<PointPair2D>> RansacAlignment2D(const std::vector<PointPair2D> &keypoint_pairs) {
     const size_t max_inliers = keypoint_pairs.size();
 
-    std::vector<PointPair> sample_keypoint_pairs(2);
+    std::vector<PointPair2D> sample_keypoint_pairs(2);
     std::vector<int> inlier_indices;
     inlier_indices.reserve(max_inliers);
 
@@ -105,13 +105,13 @@ std::tuple<Eigen::Isometry2d, int, std::vector<PointPair>> RansacAlignment2D(con
     }
 
     const int num_inliers = optimal_inlier_indices.size();
-    std::vector<PointPair> inlier_keypoint_pairs(num_inliers);
+    std::vector<PointPair2D> inlier_keypoint_pairs(num_inliers);
     std::transform(optimal_inlier_indices.cbegin(), optimal_inlier_indices.cend(),
                    inlier_keypoint_pairs.begin(),
                    [&](const auto index) { return keypoint_pairs[index]; });
     auto T = KabschUmeyamaAlignment2D(inlier_keypoint_pairs);
 
-    std::vector<PointPair> inliers(num_inliers);
+    std::vector<PointPair2D> inliers(num_inliers);
     std::transform(optimal_inlier_indices.cbegin(), optimal_inlier_indices.cend(), inliers.begin(),
                    [&](const auto index) { return keypoint_pairs[index]; });
 

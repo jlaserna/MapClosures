@@ -1,7 +1,6 @@
 # MIT License
 #
-# Copyright (c) 2024 Saurabh Gupta, Tiziano Guadagnino, Benedikt Mersch,
-# Ignacio Vizzo, Cyrill Stachniss.
+# Copyright (c) 2024 Javier Laserna
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -21,23 +20,18 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-cmake_minimum_required(VERSION 3.16...3.26)
-project(map_closures_cpp VERSION 1.0.0 LANGUAGES CXX)
-
-option(USE_SYSTEM_EIGEN3 "Use system pre-installed Eigen" ON)
-option(USE_SYSTEM_TBB "Use system pre-installed TBB" ON)
-option(USE_SYSTEM_OPENCV "Use system pre-installed OpenCV" ON)
-
-set(CMAKE_BUILD_TYPE Release)
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-
-include(3rdparty/find_dependencies.cmake)
-
-find_package(PCL 1.8 REQUIRED)
-include_directories(${PCL_INCLUDE_DIRS})
-link_directories(${PCL_LIBRARY_DIRS})
-add_definitions(${PCL_DEFINITIONS})
-
-add_subdirectory(map_closures)
-add_subdirectory(gt_closures)
+include(FetchContent)
+FetchContent_Declare(pcl URL https://github.com/PointCloudLibrary/pcl/archive/refs/tags/pcl-1.10.1.tar.gz UPDATE_DISCONNECTED 1)
+FetchContent_GetProperties(pcl)
+if(NOT pcl_POPULATED)
+  FetchContent_Populate(pcl)
+  if(${CMAKE_VERSION} GREATER_EQUAL 3.25)
+    add_subdirectory(${pcl_SOURCE_DIR} ${pcl_BINARY_DIR} SYSTEM EXCLUDE_FROM_ALL)
+  else()
+    # Emulate the SYSTEM flag introduced in CMake 3.25. Withouth this flag the compiler will
+    # consider this 3rdparty headers as source code and fail due the -Werror flag.
+    add_subdirectory(${pcl_SOURCE_DIR} ${pcl_BINARY_DIR} EXCLUDE_FROM_ALL)
+    get_target_property(pcl_include_dirs pcl INTERFACE_INCLUDE_DIRECTORIES)
+    set_target_properties(pcl PROPERTIES INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${pcl_include_dirs}")
+  endif()
+endif()

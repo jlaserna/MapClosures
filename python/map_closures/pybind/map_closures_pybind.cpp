@@ -57,15 +57,25 @@ PYBIND11_MODULE(map_closures_pybind, m) {
         m, "_Vector3dVector", "std::vector<Eigen::Vector3d>",
         py::py_array_to_vectors_double<Eigen::Vector3d>);
 
-    py::class_<ClosureCandidate> closure_candidate(m, "_ClosureCandidate");
+    py::class_<ClosureCandidate2D> closure_candidate(m, "_ClosureCandidate2D");
     closure_candidate.def(py::init<>())
-        .def_readwrite("source_id", &ClosureCandidate::source_id)
-        .def_readwrite("target_id", &ClosureCandidate::target_id)
-        .def_readwrite("pose", &ClosureCandidate::pose)
-        .def_readwrite("number_of_inliers", &ClosureCandidate::number_of_inliers)
-        .def_readwrite("keypoint_pairs", &ClosureCandidate::keypoint_pairs)
-        .def_readwrite("inliers", &ClosureCandidate::inliers)
-        .def_readwrite("alignment_time", &ClosureCandidate::alignment_time);
+        .def_readwrite("source_id", &ClosureCandidate2D::source_id)
+        .def_readwrite("target_id", &ClosureCandidate2D::target_id)
+        .def_readwrite("pose", &ClosureCandidate2D::pose)
+        .def_readwrite("number_of_inliers", &ClosureCandidate2D::number_of_inliers)
+        .def_readwrite("keypoint_pairs", &ClosureCandidate2D::keypoint_pairs)
+        .def_readwrite("inliers", &ClosureCandidate2D::inliers)
+        .def_readwrite("alignment_time", &ClosureCandidate2D::alignment_time);
+
+    py::class_<ClosureCandidate3D> closure_candidate_3d(m, "_ClosureCandidate3D");
+    closure_candidate_3d.def(py::init<>())
+        .def_readwrite("source_id", &ClosureCandidate3D::source_id)
+        .def_readwrite("target_id", &ClosureCandidate3D::target_id)
+        .def_readwrite("pose", &ClosureCandidate3D::pose)
+        .def_readwrite("number_of_inliers", &ClosureCandidate3D::number_of_inliers)
+        .def_readwrite("keypoint_pairs", &ClosureCandidate3D::keypoint_pairs)
+        .def_readwrite("inliers", &ClosureCandidate3D::inliers)
+        .def_readwrite("alignment_time", &ClosureCandidate3D::alignment_time);
 
     py::class_<MapClosures, std::shared_ptr<MapClosures>> map_closures(m, "_MapClosures", "");
     map_closures
@@ -81,7 +91,9 @@ PYBIND11_MODULE(map_closures_pybind, m) {
                  cv::cv2eigen(density_map.grid, density_map_eigen);
                  return density_map_eigen;
              })
-        .def("_MatchAndAdd", &MapClosures::MatchAndAdd, "map_id"_a, "local_map"_a)
-        .def("_ValidateClosure", &MapClosures::ValidateClosure, "reference_id"_a, "query_id"_a);
+        .def("_MatchAndAdd2D", &MapClosures::MatchAndAdd2D, "map_id"_a, "local_map"_a)
+        .def("_MatchAndAdd3D", &MapClosures::MatchAndAdd3D, "map_id"_a, "local_map"_a)
+        .def("_ValidateClosure2D", &MapClosures::ValidateClosure2D, "reference_id"_a, "query_id"_a)
+        .def("_ValidateClosure3D", &MapClosures::ValidateClosure3D, "reference_id"_a, "query_id"_a);
 }
 }  // namespace map_closures

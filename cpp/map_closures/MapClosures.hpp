@@ -46,10 +46,11 @@ struct Config {
     float density_map_resolution = 0.5;
     float density_threshold = 0.05;
     int hamming_distance_threshold = 50;
+    double voxel_grid_size = 0.1;
     AlignmentAlgorithm alignment_algorithm = AlignmentAlgorithm::RANSAC;
 };
 
-struct ClosureCandidate {
+struct ClosureCandidate2D {
     int source_id = -1;
     int target_id = -1;
     Eigen::Matrix4d pose = Eigen::Matrix4d::Identity();
@@ -59,14 +60,26 @@ struct ClosureCandidate {
     double alignment_time = 0.0;
 };
 
+struct ClosureCandidate3D {
+    int source_id = -1;
+    int target_id = -1;
+    Eigen::Matrix4d pose = Eigen::Matrix4d::Identity();
+    size_t number_of_inliers = 0;
+    std::vector<std::pair<Eigen::Vector3d, Eigen::Vector3d>> keypoint_pairs;
+    std::vector<std::pair<Eigen::Vector3d, Eigen::Vector3d>> inliers;
+    double alignment_time = 0.0;
+};
+
 class MapClosures {
 public:
     explicit MapClosures();
     explicit MapClosures(const Config &config);
     ~MapClosures() = default;
 
-    ClosureCandidate MatchAndAdd(const int id, const std::vector<Eigen::Vector3d> &local_map);
-    ClosureCandidate ValidateClosure(const int reference_id, const int query_id) const;
+    ClosureCandidate2D MatchAndAdd2D(const int id, const std::vector<Eigen::Vector3d> &local_map);
+    ClosureCandidate3D MatchAndAdd3D(const int id, const std::vector<Eigen::Vector3d> &local_map);
+    ClosureCandidate2D ValidateClosure2D(const int reference_id, const int query_id) const;
+    ClosureCandidate3D ValidateClosure3D(const int reference_id, const int query_id) const;
 
     const DensityMap &getDensityMapFromId(const int &map_id) const {
         return density_maps_.at(map_id);
@@ -76,6 +89,7 @@ private:
     Config config_;
     Tree::MatchVectorMap descriptor_matches_;
     std::unordered_map<int, DensityMap> density_maps_;
+    std::unordered_map<int, std::vector<Eigen::Vector3d>> local_maps_;
     std::unique_ptr<Tree> hbst_binary_tree_ = std::make_unique<Tree>();
     cv::Ptr<cv::DescriptorExtractor> orb_extractor_;
 };

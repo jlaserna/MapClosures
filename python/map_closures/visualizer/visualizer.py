@@ -124,6 +124,8 @@ class Visualizer(StubVisualizer):
             self._gui.Separator()
             self.closures._query_map_callback()
             self.closures._reference_map_callback()
+            self.closures._inliers_callback()
+            self.closures._outliers_callback()
             self._gui.Separator()
             self.closures._alignment_callback()
             self._gui.SameLine()

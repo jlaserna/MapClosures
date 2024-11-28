@@ -29,8 +29,14 @@
 
 #include "PointPair.hpp"
 
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
+#include <pcl/correspondence.h>
+
 namespace map_closures {
 
-std::tuple<Eigen::Isometry2d, int, std::vector<PointPair2D>> CliRegAlignment2D(const std::vector<PointPair2D> &keypoint_pairs);
+std::tuple<Eigen::Isometry3d, int, std::vector<PointPair3D>> CliRegAlignment3D(pcl::PointCloud<pcl::PointXYZ>::Ptr reference_keypoints,
+                                                                               pcl::PointCloud<pcl::PointXYZ>::Ptr query_keypoints,
+                                                                               pcl::CorrespondencesPtr correspondences);
 
 }  // namespace map_closures

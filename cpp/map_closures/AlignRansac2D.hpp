@@ -32,6 +32,6 @@
 
 namespace map_closures {
 
-std::tuple<Eigen::Isometry2d, int, std::vector<PointPair>> RansacAlignment2D(const std::vector<PointPair> &keypoint_pairs);
+std::tuple<Eigen::Isometry2d, int, std::vector<PointPair2D>> RansacAlignment2D(const std::vector<PointPair2D> &keypoint_pairs);
 
 }  // namespace map_closures
