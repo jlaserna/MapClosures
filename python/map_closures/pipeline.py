@@ -149,7 +149,8 @@ class MapClosurePipeline:
                 scan_idx == self._n_scans - 1
             ):
                 local_map_pointcloud = self.voxel_local_map.point_cloud()
-                closure = self.map_closures.match_and_add(map_idx, local_map_pointcloud)
+                #closure = self.map_closures.match_and_add_2D(map_idx, local_map_pointcloud)
+                closure = self.map_closures.match_and_add_3D(map_idx, local_map_pointcloud)
 
                 scan_indices_in_local_map.append(scan_idx)
                 poses_in_local_map.append(current_frame_pose)

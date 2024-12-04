@@ -27,6 +27,7 @@
 #include <pcl/features/fpfh.h>
 #include <pcl/features/normal_3d.h>
 #include <pcl/features/shot.h>
+#include <pcl/filters/filter.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/keypoints/iss_3d.h>
@@ -60,6 +61,13 @@ static constexpr int edge_threshold = 31;
 static constexpr int score_type = 0;
 static constexpr int patch_size = 31;
 static constexpr int fast_threshold = 35;
+// fixed parameters for 3D registration
+static constexpr double voxel_downsampling_rate = 64.0;
+static constexpr double max_correspondence_distance = 1e16;
+// fixed parameters for BSHOT
+static constexpr double normal_radius = 0.2;
+static constexpr double voxel_grid_size = 1.5;
+static constexpr double shot_radius = 0.15;
 }  // namespace
 
 namespace map_closures {
@@ -67,12 +75,16 @@ MapClosures::MapClosures() : config_(Config()) {
     orb_extractor_ =
         cv::ORB::create(nfeatures, scale_factor, n_levels, edge_threshold, first_level, WTA_K,
                         cv::ORB::ScoreType(score_type), patch_size, fast_threshold);
+    bshot_extractor_ =
+        std::make_shared<BSHOT::bshot_extractor>(normal_radius, voxel_grid_size, shot_radius);
 }
 
 MapClosures::MapClosures(const Config &config) : config_(config) {
     orb_extractor_ =
         cv::ORB::create(nfeatures, scale_factor, n_levels, edge_threshold, first_level, WTA_K,
                         cv::ORB::ScoreType(score_type), patch_size, fast_threshold);
+    bshot_extractor_ =
+        std::make_shared<BSHOT::bshot_extractor>(normal_radius, voxel_grid_size, shot_radius);
 }
 
 ClosureCandidate2D MapClosures::MatchAndAdd2D(const int id,
@@ -178,19 +190,30 @@ ClosureCandidate3D MapClosures::MatchAndAdd3D(const int id,
     local_maps_.emplace(id, local_map);
     DensityMap density_map =
         GenerateDensityMap(local_map, config_.density_map_resolution, config_.density_threshold);
-    cv::Mat orb_descriptors;
-    std::vector<cv::KeyPoint> orb_keypoints;
-    orb_extractor_->detectAndCompute(density_map.grid, cv::noArray(), orb_keypoints,
-                                     orb_descriptors);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_points(new pcl::PointCloud<pcl::PointXYZ>);
+    for (const auto &point : local_map) {
+        pcl_points->push_back(pcl::PointXYZ(point.x(), point.y(), point.z()));
+    }
+    std::vector<BSHOT::BSHOTSignature352> bshot_descriptors;
+    std::vector<pcl::PointXYZ> bshot_keypoints;
+    bshot_extractor_->detectAndCompute(pcl_points, bshot_descriptors, bshot_keypoints);
 
-    auto hbst_matchable = Tree::getMatchables(orb_descriptors, orb_keypoints, id);
-    hbst_binary_tree_->matchAndAdd(hbst_matchable, descriptor_matches_,
-                                   config_.hamming_distance_threshold,
-                                   srrg_hbst::SplittingStrategy::SplitEven);
+    Matchable3DVector matchables(bshot_keypoints.size());
+    for (size_t i = 0; i < bshot_keypoints.size(); ++i) {
+        matchables[i] = new Matchable3D(bshot_keypoints[i], bshot_descriptors[i].bits, id);
+    }
+
+    hbst_binary_tree_3d_->matchAndAdd(matchables, descriptor_matches_3d_,
+                                      config_.hamming_distance_threshold,
+                                      srrg_hbst::SplittingStrategy::SplitEven);
     density_maps_.emplace(id, std::move(density_map));
-    std::vector<int> indices(descriptor_matches_.size());
-    std::transform(descriptor_matches_.cbegin(), descriptor_matches_.cend(), indices.begin(),
+    std::vector<int> indices(descriptor_matches_3d_.size());
+    std::transform(descriptor_matches_3d_.cbegin(), descriptor_matches_3d_.cend(), indices.begin(),
                    [](const auto &descriptor_match) { return descriptor_match.first; });
+    for (const auto &index : indices) {
+        const Tree3D::MatchVector &matches = descriptor_matches_3d_.at(index);
+        std::cout << "Matches size: " << matches.size() << " at index " << index << std::endl;
+    }
     auto compare_closure_candidates = [](ClosureCandidate3D a,
                                          const ClosureCandidate3D &b) -> ClosureCandidate3D {
         return a.number_of_inliers > b.number_of_inliers ? a : b;
@@ -245,6 +268,8 @@ void voxelize(pcl::PointCloud<pcl::PointXYZ>::Ptr pc_src,
 
 ClosureCandidate3D MapClosures::ValidateClosure3D(const int reference_id,
                                                   const int query_id) const {
+    throw std::runtime_error("Not implemented yet");
+
     // Get the point clouds from the local maps
     const auto &reference_map = local_maps_.at(reference_id);
     const auto &query_map = local_maps_.at(query_id);
@@ -259,29 +284,80 @@ ClosureCandidate3D MapClosures::ValidateClosure3D(const int reference_id,
     for (const auto &point : query_map) {
         query_cloud->push_back(pcl::PointXYZ(point.x(), point.y(), point.z()));
     }
+    std::vector<int> indices;
 
-    pcl::ISSKeypoint3D<pcl::PointXYZ, pcl::PointXYZ> iss_detector;
     pcl::search::KdTree<pcl::PointXYZ>::Ptr tree(new pcl::search::KdTree<pcl::PointXYZ>);
-    pcl::NormalEstimation<pcl::PointXYZ, pcl::Normal> normal_estimator;
-    pcl::FPFHEstimation<pcl::PointXYZ, pcl::Normal, pcl::FPFHSignature33> fpfh_estimator;
 
-    pcl::PointCloud<pcl::PointXYZ>::Ptr reference_voxels(new pcl::PointCloud<pcl::PointXYZ>);
-    pcl::PointCloud<pcl::PointXYZ>::Ptr reference_keypoints(new pcl::PointCloud<pcl::PointXYZ>);
-    pcl::PointCloud<pcl::Normal>::Ptr reference_normals(new pcl::PointCloud<pcl::Normal>);
-    pcl::PointCloud<pcl::FPFHSignature33>::Ptr reference_features(
-        new pcl::PointCloud<pcl::FPFHSignature33>);
-    pcl::PointCloud<pcl::PointXYZ>::Ptr query_voxels(new pcl::PointCloud<pcl::PointXYZ>);
-    pcl::PointCloud<pcl::PointXYZ>::Ptr query_keypoints(new pcl::PointCloud<pcl::PointXYZ>);
-    pcl::PointCloud<pcl::Normal>::Ptr query_normals(new pcl::PointCloud<pcl::Normal>);
-    pcl::PointCloud<pcl::FPFHSignature33>::Ptr query_features(
-        new pcl::PointCloud<pcl::FPFHSignature33>);
+    // Remove NaN points
+    pcl::removeNaNFromPointCloud(*reference_cloud, *reference_cloud, indices);
+    pcl::removeNaNFromPointCloud(*query_cloud, *query_cloud, indices);
 
     double reference_resolution = computeCloudResolution(reference_cloud);
     double query_resolution = computeCloudResolution(query_cloud);
 
-    voxelize(reference_cloud, reference_voxels, reference_resolution * 8);
-    voxelize(query_cloud, query_voxels, query_resolution * 8);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr reference_voxels(new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr query_voxels(new pcl::PointCloud<pcl::PointXYZ>);
+    voxelize(reference_cloud, reference_voxels, reference_resolution * voxel_downsampling_rate);
+    voxelize(query_cloud, query_voxels, query_resolution * voxel_downsampling_rate);
 
+    reference_resolution = computeCloudResolution(reference_voxels);
+    query_resolution = computeCloudResolution(query_voxels);
+
+    /*
+    std::cout << "Reference resolution: " << reference_resolution << std::endl;
+    std::cout << "Query resolution: " << query_resolution << std::endl;
+
+    std::cout << "Reference voxels size: " << reference_voxels->size() << std::endl;
+    std::cout << "Query voxels size: " << query_voxels->size() << std::endl;
+    */
+
+    pcl::NormalEstimation<pcl::PointXYZ, pcl::Normal> normal_estimator;
+    pcl::PointCloud<pcl::Normal>::Ptr reference_normals(new pcl::PointCloud<pcl::Normal>);
+    pcl::PointCloud<pcl::Normal>::Ptr query_normals(new pcl::PointCloud<pcl::Normal>);
+    normal_estimator.setSearchMethod(tree);
+    normal_estimator.setRadiusSearch(reference_resolution * 2);
+    normal_estimator.setInputCloud(reference_voxels);
+    normal_estimator.compute(*reference_normals);
+    normal_estimator.setRadiusSearch(query_resolution * 2);
+    normal_estimator.setInputCloud(query_voxels);
+    normal_estimator.compute(*query_normals);
+
+    // Remove NaN normals
+    std::vector<int> reference_indices;
+    pcl::removeNaNNormalsFromPointCloud(*reference_normals, *reference_normals, reference_indices);
+    std::vector<int> query_indices;
+    pcl::removeNaNNormalsFromPointCloud(*query_normals, *query_normals, query_indices);
+
+    // Remove voxels with NaN normals
+    pcl::PointCloud<pcl::PointXYZ>::Ptr reference_voxels_no_nan(new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr query_voxels_no_nan(new pcl::PointCloud<pcl::PointXYZ>);
+    for (size_t i = 0; i < reference_indices.size(); i++) {
+        reference_voxels_no_nan->push_back(reference_voxels->at(reference_indices[i]));
+    }
+    for (size_t i = 0; i < query_indices.size(); i++) {
+        query_voxels_no_nan->push_back(query_voxels->at(query_indices[i]));
+    }
+    reference_voxels = reference_voxels_no_nan;
+    query_voxels = query_voxels_no_nan;
+
+    /*
+    for (size_t i = 0; i < reference_voxels->size(); i++) {
+        std::cout << "Reference voxel " << i << ": " << reference_voxels->at(i) << std::endl;
+    }
+    for (size_t i = 0; i < query_voxels->size(); i++) {
+        std::cout << "Query voxel " << i << ": " << query_voxels->at(i) << std::endl;
+    }
+    for (size_t i = 0; i < reference_normals->size(); i++) {
+        std::cout << "Reference normal " << i << ": " << reference_normals->at(i) << std::endl;
+    }
+    for (size_t i = 0; i < query_normals->size(); i++) {
+        std::cout << "Query normal " << i << ": " << query_normals->at(i) << std::endl;
+    }
+    */
+
+    pcl::ISSKeypoint3D<pcl::PointXYZ, pcl::PointXYZ> iss_detector;
+    pcl::PointCloud<pcl::PointXYZ>::Ptr reference_keypoints(new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr query_keypoints(new pcl::PointCloud<pcl::PointXYZ>);
     iss_detector.setThreshold21(0.975);
     iss_detector.setThreshold32(0.975);
     iss_detector.setMinNeighbors(5);
@@ -295,23 +371,49 @@ ClosureCandidate3D MapClosures::ValidateClosure3D(const int reference_id,
     iss_detector.setInputCloud(query_voxels);
     iss_detector.compute(*query_keypoints);
 
-    normal_estimator.setSearchMethod(tree);
-    normal_estimator.setRadiusSearch(reference_resolution * 2);
-    normal_estimator.setInputCloud(reference_keypoints);
-    normal_estimator.compute(*reference_normals);
-    normal_estimator.setRadiusSearch(query_resolution * 2);
-    normal_estimator.setInputCloud(query_keypoints);
-    normal_estimator.compute(*query_normals);
+    /*
+    for (size_t i = 0; i < reference_keypoints->size(); i++) {
+        std::cout << "Reference keypoint " << i << ": " << reference_keypoints->at(i) <<
+    std::endl;
+    }
+    for (size_t i = 0; i < query_keypoints->size(); i++) {
+        std::cout << "Query keypoint " << i << ": " << query_keypoints->at(i) << std::endl;
+    }
+    std::cout << "Reference keypoints size: " << reference_keypoints->size() << std::endl;
+    std::cout << "Query keypoints size: " << query_keypoints->size() << std::endl;
+    */
 
+    pcl::FPFHEstimation<pcl::PointXYZ, pcl::Normal, pcl::FPFHSignature33> fpfh_estimator;
+    pcl::PointCloud<pcl::FPFHSignature33>::Ptr reference_features(
+        new pcl::PointCloud<pcl::FPFHSignature33>);
+    pcl::PointCloud<pcl::FPFHSignature33>::Ptr query_features(
+        new pcl::PointCloud<pcl::FPFHSignature33>);
     fpfh_estimator.setSearchMethod(tree);
     fpfh_estimator.setRadiusSearch(reference_resolution * 5);
     fpfh_estimator.setInputCloud(reference_keypoints);
     fpfh_estimator.setInputNormals(reference_normals);
+    fpfh_estimator.setSearchSurface(reference_voxels);
     fpfh_estimator.compute(*reference_features);
     fpfh_estimator.setRadiusSearch(query_resolution * 5);
     fpfh_estimator.setInputCloud(query_keypoints);
     fpfh_estimator.setInputNormals(query_normals);
+    fpfh_estimator.setSearchSurface(query_voxels);
     fpfh_estimator.compute(*query_features);
+
+    for (size_t i = 0; i < reference_features->size(); i++) {
+        // std::cout << "Reference feature " << i << ": " << reference_features->at(i) << std::endl;
+        if (!pcl::isFinite(reference_features->at(i))) {
+            std::cerr << "Reference feature " << i << " is not finite" << std::endl;
+        }
+    }
+    for (size_t i = 0; i < query_features->size(); i++) {
+        // std::cout << "Query feature " << i << ": " << query_features->at(i) << std::endl;
+        if (!pcl::isFinite(query_features->at(i))) {
+            std::cerr << "Query feature " << i << " is not finite" << std::endl;
+        }
+    }
+    // std::cout << "Reference features size: " << reference_features->size() << std::endl;
+    // std::cout << "Query features size: " << query_features->size() << std::endl;
 
     pcl::KdTreeFLANN<pcl::FPFHSignature33> kdtree;
     kdtree.setInputCloud(reference_features);
@@ -319,11 +421,19 @@ ClosureCandidate3D MapClosures::ValidateClosure3D(const int reference_id,
     pcl::CorrespondencesPtr correspondences(new pcl::Correspondences);
     for (size_t i = 0; i < query_features->size(); i++) {
         query_feature = query_features->at(i);
+        // Validate the feature
+        if (!pcl::isFinite(query_feature)) {
+            std::cerr << "Query feature " << i << " is not finite" << std::endl;
+            continue;
+        }
         std::vector<int> indices;
         std::vector<float> squared_distances;
-        if (kdtree.nearestKSearch(query_feature, 1, indices, squared_distances) > 0) {
-            if (!indices.empty() && !squared_distances.empty()) {
-                pcl::Correspondence correspondence(indices[0], static_cast<int>(i),
+        // std::cout << "Feature " << i << " of " << query_features->size() << std::endl;
+        // std::cout << "Feature data " << query_features->at(i) << std::endl;
+        if (kdtree.nearestKSearch(query_feature, 1, indices, squared_distances) == 1) {
+            if (!indices.empty() && !squared_distances.empty() &&
+                squared_distances[0] < max_correspondence_distance) {
+                pcl::Correspondence correspondence(static_cast<int>(i), indices[0],
                                                    squared_distances[0]);
                 correspondences->push_back(correspondence);
             }
@@ -331,8 +441,8 @@ ClosureCandidate3D MapClosures::ValidateClosure3D(const int reference_id,
     }
 
     // end = std::chrono::high_resolution_clock::now();
-    // std::cout << "Create correspondences: " << std::chrono::duration<double, std::milli>(end -
-    // start).count() << " ms" << std::endl; std::cout << "Correspondences size: " <<
+    // std::cout << "Create correspondences: " << std::chrono::duration<double, std::milli>(end
+    // - start).count() << " ms" << std::endl; std::cout << "Correspondences size: " <<
     // correspondences->size() << std::endl;
 
     Eigen::Isometry3d pose3d;

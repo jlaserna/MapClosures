@@ -31,14 +31,21 @@
 #include <utility>
 #include <vector>
 
-#include "DensityMap.hpp"
 #include "AlignRansac2D.hpp"
+#include "DensityMap.hpp"
+#include "bshot.h"
 #include "srrg_hbst/types/binary_tree.hpp"
 
 static constexpr int descriptor_size_bits = 256;
 using Matchable = srrg_hbst::BinaryMatchable<cv::KeyPoint, descriptor_size_bits>;
 using Node = srrg_hbst::BinaryNode<Matchable>;
 using Tree = srrg_hbst::BinaryTree<Node>;
+
+static constexpr int descriptor_size_bits_3d = 352;
+using Matchable3D = srrg_hbst::BinaryMatchable<pcl::PointXYZ, descriptor_size_bits_3d>;
+using Matchable3DVector = std::vector<Matchable3D *>;
+using Node3D = srrg_hbst::BinaryNode<Matchable3D>;
+using Tree3D = srrg_hbst::BinaryTree<Node3D>;
 
 namespace map_closures {
 enum class AlignmentAlgorithm { RANSAC, CLIREG };
@@ -88,9 +95,12 @@ public:
 private:
     Config config_;
     Tree::MatchVectorMap descriptor_matches_;
+    Tree3D::MatchVectorMap descriptor_matches_3d_;
     std::unordered_map<int, DensityMap> density_maps_;
     std::unordered_map<int, std::vector<Eigen::Vector3d>> local_maps_;
     std::unique_ptr<Tree> hbst_binary_tree_ = std::make_unique<Tree>();
+    std::unique_ptr<Tree3D> hbst_binary_tree_3d_ = std::make_unique<Tree3D>();
     cv::Ptr<cv::DescriptorExtractor> orb_extractor_;
+    BSHOT::bshot_extractor::Ptr bshot_extractor_;
 };
 }  // namespace map_closures
