@@ -31,7 +31,8 @@
 #include <utility>
 #include <vector>
 
-#include "AlignRansac2D.hpp"
+#include "AlignCliReg.hpp"
+#include "AlignRansac.hpp"
 #include "DensityMap.hpp"
 #include "bshot.h"
 #include "srrg_hbst/types/binary_tree.hpp"

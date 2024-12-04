@@ -21,7 +21,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#include "AlignRansac2D.hpp"
+#include "AlignRansac.hpp"
 
 #include <Eigen/Core>
 #include <Eigen/Geometry>
@@ -72,7 +72,8 @@ static constexpr int __RANSAC_TRIALS__ = std::ceil(
 
 namespace map_closures {
 
-std::tuple<Eigen::Isometry2d, int, std::vector<PointPair2D>> RansacAlignment2D(const std::vector<PointPair2D> &keypoint_pairs) {
+std::tuple<Eigen::Isometry2d, int, std::vector<PointPair2D>> RansacAlignment2D(
+    const std::vector<PointPair2D> &keypoint_pairs) {
     const size_t max_inliers = keypoint_pairs.size();
 
     std::vector<PointPair2D> sample_keypoint_pairs(2);
