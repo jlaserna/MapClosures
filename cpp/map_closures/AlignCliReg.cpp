@@ -72,8 +72,45 @@ Eigen::Isometry2d KabschUmeyamaAlignment2D(
     return T;
 }
 
+Eigen::Isometry3d KabschUmeyamaAlignment3D(
+    const std::vector<map_closures::PointPair3D> &keypoint_pairs) {
+    auto mean = std::reduce(keypoint_pairs.cbegin(), keypoint_pairs.cend(),
+                            map_closures::PointPair3D(), [](auto lhs, const auto &rhs) {
+                                lhs.ref += rhs.ref;
+                                lhs.query += rhs.query;
+                                return lhs;
+                            });
+    mean.query /= keypoint_pairs.size();
+    mean.ref /= keypoint_pairs.size();
+    auto covariance_matrix = std::transform_reduce(
+        keypoint_pairs.cbegin(), keypoint_pairs.cend(), Eigen::Matrix3d().setZero(),
+        std::plus<Eigen::Matrix3d>(), [&](const auto &keypoint_pair) {
+            return (keypoint_pair.ref - mean.ref) *
+                   ((keypoint_pair.query - mean.query).transpose());
+        });
+
+    Eigen::JacobiSVD<Eigen::Matrix3d> svd(covariance_matrix,
+                                          Eigen::ComputeFullU | Eigen::ComputeFullV);
+    const Eigen::Matrix3d &U = svd.matrixU();
+    const Eigen::Matrix3d &V = svd.matrixV();
+    Eigen::Matrix3d R = V * U.transpose();
+    if (R.determinant() < 0) {
+        Eigen::Matrix3d V_corrected = V;
+        V_corrected.col(2) *= -1;
+        R = V_corrected * U.transpose();
+    }
+
+    Eigen::Vector3d t = mean.query - R * mean.ref;
+    Eigen::Isometry3d T = Eigen::Isometry3d::Identity();
+    T.linear() = R;
+    T.translation() = t;
+
+    return T;
+}
+
 static constexpr double inliers_distance_threshold = 3.0;
 static constexpr double inliers3d_distance_threshold = 0.2;
+static constexpr bool verbose = false;
 
 }  // namespace
 
@@ -104,7 +141,7 @@ std::tuple<Eigen::Isometry2d, int, std::vector<PointPair2D>> CliRegAlignment2D(
         return {Eigen::Isometry2d::Identity(), 0, {}};
     }
 
-    auto ret_status = cliqueGraphRun(graph, 2, 0, 0, 1, 1, vertices, "", false);
+    auto ret_status = cliqueGraphRun(graph, 2, 0, 0, 1, 1, vertices, "", verbose);
 
     if (ret_status == ERR) {
         return {Eigen::Isometry2d::Identity(), 0, {}};
@@ -144,7 +181,7 @@ std::tuple<Eigen::Isometry3d, int, std::vector<PointPair3D>> CliRegAlignment3D(
         return {Eigen::Isometry3d::Identity(), 0, {}};
     }
 
-    auto ret_status = cliqueGraphRun(graph, 2, 0, 0, 1, 1, vertices, "", false);
+    auto ret_status = cliqueGraphRun(graph, 2, 0, 0, 1, 1, vertices, "", verbose);
 
     if (ret_status == ERR) {
         return {Eigen::Isometry3d::Identity(), 0, {}};
@@ -154,7 +191,7 @@ std::tuple<Eigen::Isometry3d, int, std::vector<PointPair3D>> CliRegAlignment3D(
     std::transform(vertices.cbegin(), vertices.cend(), inliers.begin(),
                    [&](const auto index) { return keypoint_pairs[index]; });
 
-    auto T = Eigen::Isometry3d::Identity();
+    auto T = KabschUmeyamaAlignment3D(inliers);
 
     return {T, vertices.size(), inliers};
 }
