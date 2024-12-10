@@ -109,7 +109,7 @@ Eigen::Isometry3d KabschUmeyamaAlignment3D(
 }
 
 static constexpr double inliers_distance_threshold = 3.0;
-static constexpr double inliers3d_distance_threshold = 0.2;
+static constexpr double inliers3d_distance_threshold = 0.75;
 static constexpr bool verbose = false;
 
 }  // namespace

@@ -56,9 +56,7 @@ static constexpr int score_type = 0;
 static constexpr int patch_size = 31;
 static constexpr int fast_threshold = 35;
 // fixed parameters for BSHOT
-static constexpr double normal_radius = 0.2;
-static constexpr double voxel_grid_size = 3.0;
-static constexpr double shot_radius = 0.15;
+static constexpr double voxel_grid_size = 0.75;
 }  // namespace
 
 namespace map_closures {
@@ -66,16 +64,14 @@ MapClosures::MapClosures() : config_(Config()) {
     orb_extractor_ =
         cv::ORB::create(nfeatures, scale_factor, n_levels, edge_threshold, first_level, WTA_K,
                         cv::ORB::ScoreType(score_type), patch_size, fast_threshold);
-    bshot_extractor_ =
-        std::make_shared<BSHOT::bshot_extractor>(normal_radius, voxel_grid_size, shot_radius);
+    bshot_extractor_ = std::make_shared<BSHOT::bshot_extractor>(voxel_grid_size);
 }
 
 MapClosures::MapClosures(const Config &config) : config_(config) {
     orb_extractor_ =
         cv::ORB::create(nfeatures, scale_factor, n_levels, edge_threshold, first_level, WTA_K,
                         cv::ORB::ScoreType(score_type), patch_size, fast_threshold);
-    bshot_extractor_ =
-        std::make_shared<BSHOT::bshot_extractor>(normal_radius, voxel_grid_size, shot_radius);
+    bshot_extractor_ = std::make_shared<BSHOT::bshot_extractor>(voxel_grid_size);
 }
 
 ClosureCandidate2D MapClosures::MatchAndAdd2D(const int id,

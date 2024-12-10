@@ -3,6 +3,7 @@
 #include <pcl/features/normal_3d_omp.h>
 #include <pcl/features/shot_omp.h>
 #include <pcl/filters/voxel_grid.h>
+#include <pcl/keypoints/iss_3d.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 #include <pcl/search/kdtree.h>
@@ -18,88 +19,6 @@ public:
 
     BSHOTSignature352() { bits.reset(); }
 
-    BSHOTSignature352(const pcl::SHOT352 &shot) {
-        std::bitset<4> bit;
-        bits.reset();
-
-        for (int i = 0; i < 88; i++) {
-            float vec[4] = {0};
-
-            for (int j = 0; j < 4; j++) {
-                vec[j] = shot.descriptor[i * 4 + j];
-            }
-            float sum = vec[0] + vec[1] + vec[2] + vec[3];
-
-            bit.reset();
-
-            // Case A
-            if (vec[0] == 0 and vec[1] == 0 and vec[2] == 0 and vec[3] == 0) {
-                // Do nothing as the bits are already reset
-            }
-            // Case B
-            else if (vec[0] > (0.9 * (sum))) {
-                bit.set(0);
-            } else if (vec[1] > (0.9 * (sum))) {
-                bit.set(1);
-            } else if (vec[2] > (0.9 * (sum))) {
-                bit.set(2);
-            } else if (vec[3] > (0.9 * (sum))) {
-                bit.set(3);
-            }
-            // Case C
-            else if ((vec[0] + vec[1]) > (0.9 * (sum))) {
-                bit.set(0);
-                bit.set(1);
-            } else if ((vec[0] + vec[2]) > (0.9 * (sum))) {
-                bit.set(0);
-                bit.set(2);
-            } else if ((vec[0] + vec[3]) > (0.9 * (sum))) {
-                bit.set(0);
-                bit.set(3);
-            } else if ((vec[1] + vec[2]) > (0.9 * (sum))) {
-                bit.set(1);
-                bit.set(2);
-            } else if ((vec[1] + vec[3]) > (0.9 * (sum))) {
-                bit.set(1);
-                bit.set(3);
-            } else if ((vec[2] + vec[3]) > (0.9 * (sum))) {
-                bit.set(2);
-                bit.set(3);
-            }
-            // Case D
-            else if ((vec[0] + vec[1] + vec[2]) > (0.9 * (sum))) {
-                bit.set(0);
-                bit.set(1);
-                bit.set(2);
-            } else if ((vec[0] + vec[2] + vec[3]) > (0.9 * (sum))) {
-                bit.set(0);
-                bit.set(2);
-                bit.set(3);
-            } else if ((vec[0] + vec[1] + vec[3]) > (0.9 * (sum))) {
-                bit.set(0);
-                bit.set(1);
-                bit.set(3);
-            } else if ((vec[1] + vec[2] + vec[3]) > (0.9 * (sum))) {
-                bit.set(1);
-                bit.set(2);
-                bit.set(3);
-            }
-            // Case E
-            else {
-                bit.set(0);
-                bit.set(1);
-                bit.set(2);
-                bit.set(3);
-            }
-
-            // Set the bits
-            if (bit.test(0)) bits.set(i * 4);
-            if (bit.test(1)) bits.set(i * 4 + 1);
-            if (bit.test(2)) bits.set(i * 4 + 2);
-            if (bit.test(3)) bits.set(i * 4 + 3);
-        }
-    }
-    /*
     BSHOTSignature352(const pcl::SHOT352 &shot) {
         bits.reset();
 
@@ -160,7 +79,7 @@ public:
             bits[i * 4 + 2] = (bit & 0x4) >> 2;
             bits[i * 4 + 3] = (bit & 0x8) >> 3;
         }
-    }*/
+    }
 
     BSHOTSignature352(const std::bitset<352> &bits) : bits(bits) {}
 
@@ -173,10 +92,9 @@ public:
 };  // class BSHOTSignature352
 
 class bshot_extractor {
-    double normal_radius;
     double voxel_grid_size;
-    double shot_radius;
 
+    pcl::PointCloud<pcl::PointXYZ>::Ptr downsampled_cloud;
     pcl::PointCloud<pcl::Normal>::Ptr shot_normals;
     pcl::PointCloud<pcl::PointXYZ>::Ptr shot_keypoints;
     pcl::PointCloud<pcl::SHOT352>::Ptr shot_descriptors;
@@ -189,8 +107,8 @@ class bshot_extractor {
 public:
     typedef std::shared_ptr<bshot_extractor> Ptr;
 
-    bshot_extractor(double normal_radius, double voxel_grid_size, double shot_radius)
-        : normal_radius(normal_radius), voxel_grid_size(voxel_grid_size), shot_radius(shot_radius) {
+    bshot_extractor(double voxel_grid_size) : voxel_grid_size(voxel_grid_size) {
+        downsampled_cloud = pcl::PointCloud<pcl::PointXYZ>::Ptr(new pcl::PointCloud<pcl::PointXYZ>);
         shot_normals = pcl::PointCloud<pcl::Normal>::Ptr(new pcl::PointCloud<pcl::Normal>);
         shot_keypoints = pcl::PointCloud<pcl::PointXYZ>::Ptr(new pcl::PointCloud<pcl::PointXYZ>);
         shot_descriptors = pcl::PointCloud<pcl::SHOT352>::Ptr(new pcl::PointCloud<pcl::SHOT352>);
@@ -202,15 +120,15 @@ public:
     void detectAndCompute(const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud,
                           std::vector<BSHOTSignature352> &bshot_descriptors,
                           std::vector<pcl::PointXYZ> &keypoints) {
-        // Calculate the keypoints
+        // Downsample the cloud
         voxelGrid.setInputCloud(cloud);
         voxelGrid.setLeafSize(voxel_grid_size, voxel_grid_size, voxel_grid_size);
-        voxelGrid.filter(*shot_keypoints);
+        voxelGrid.filter(*downsampled_cloud);
 
-        double resolution = computeCloudResolution(shot_keypoints);
+        double resolution = computeCloudResolution(downsampled_cloud);
 
         // Calculate the normals
-        normalEstimator.setInputCloud(shot_keypoints);
+        normalEstimator.setInputCloud(downsampled_cloud);
         normalEstimator.setRadiusSearch(resolution * 2);
         normalEstimator.setNumberOfThreads(12);
         normalEstimator.setSearchMethod(tree);
@@ -221,15 +139,27 @@ public:
         pcl::removeNaNNormalsFromPointCloud(*shot_normals, *shot_normals, indices);
 
         // Remove the points with NaN normals
-        pcl::PointCloud<pcl::PointXYZ>::Ptr shot_keypoints_no_nan(
+        pcl::PointCloud<pcl::PointXYZ>::Ptr downsampled_cloud_no_nan(
             new pcl::PointCloud<pcl::PointXYZ>);
         for (size_t i = 0; i < indices.size(); i++) {
-            shot_keypoints_no_nan->push_back(shot_keypoints->at(indices[i]));
+            downsampled_cloud_no_nan->push_back(downsampled_cloud->points[indices[i]]);
         }
 
+        // Calculate the keypoints (ISS)
+        pcl::ISSKeypoint3D<pcl::PointXYZ, pcl::PointXYZ> issEstimator;
+        issEstimator.setInputCloud(downsampled_cloud_no_nan);
+        issEstimator.setSearchMethod(tree);
+        issEstimator.setSalientRadius(6 * resolution);
+        issEstimator.setNonMaxRadius(4 * resolution);
+        issEstimator.setThreshold21(0.975);
+        issEstimator.setThreshold32(0.975);
+        issEstimator.setMinNeighbors(5);
+        issEstimator.setNumberOfThreads(12);
+        issEstimator.compute(*shot_keypoints);
+
         // Calculate the SHOT descriptors
-        shotEstimator.setInputCloud(shot_keypoints_no_nan);
-        // shotEstimator.setSearchSurface(shot_keypoints);
+        shotEstimator.setInputCloud(shot_keypoints);
+        shotEstimator.setSearchSurface(downsampled_cloud_no_nan);
         shotEstimator.setInputNormals(shot_normals);
         shotEstimator.setRadiusSearch(resolution * 4);
         shotEstimator.setSearchMethod(tree);
@@ -245,8 +175,8 @@ public:
 
         // Convert the keypoints to pcl::PointXYZ
         keypoints.clear();
-        keypoints.reserve(shot_keypoints_no_nan->size());
-        for (const auto &keypoint : *shot_keypoints_no_nan) {
+        keypoints.reserve(shot_keypoints->size());
+        for (const auto &keypoint : *shot_keypoints) {
             keypoints.push_back(keypoint);
         }
 
