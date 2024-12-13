@@ -120,17 +120,11 @@ public:
     void detectAndCompute(const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud,
                           std::vector<BSHOTSignature352> &bshot_descriptors,
                           std::vector<pcl::PointXYZ> &keyPoints) {
-        bool verbose = false;
-
-        std::cout << "Cloud size: " << cloud->size() << std::endl;
-
         // Voxelize the input cloud
         pcl::PointCloud<pcl::PointXYZ>::Ptr voxel_cloud(new pcl::PointCloud<pcl::PointXYZ>);
         voxelGrid.setInputCloud(cloud);
         voxelGrid.setLeafSize(voxel_grid_size, voxel_grid_size, voxel_grid_size);
         voxelGrid.filter(*voxel_cloud);
-
-        std::cout << "Voxelized cloud size: " << voxel_cloud->size() << std::endl;
 
         // Compute the ISS keypoints
         pcl::ISSKeypoint3D<pcl::PointXYZ, pcl::PointXYZ> issDetector;
@@ -142,23 +136,6 @@ public:
         issDetector.setMinNeighbors(5);
         issDetector.setNumberOfThreads(12);
         issDetector.compute(*keypoints);
-
-        std::cout << "Keypoints size: " << keypoints->size() << std::endl;
-
-        if (verbose) {
-            pcl::visualization::PCLVisualizer::Ptr viewer(
-                new pcl::visualization::PCLVisualizer("3D Viewer"));
-            pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> keypoints_color_handler(
-                voxel_cloud, 255, 0, 0);
-            viewer->setBackgroundColor(0, 0, 0);
-            viewer->addPointCloud<pcl::PointXYZ>(voxel_cloud, "cloud");
-            viewer->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE,
-                                                     1, "cloud");
-            viewer->addPointCloud<pcl::PointXYZ>(keypoints, keypoints_color_handler, "keypoints");
-            viewer->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE,
-                                                     5, "keypoints");
-            viewer->spin();
-        }
 
         // Calculate the normals
         normalEstimator.setInputCloud(voxel_cloud);
