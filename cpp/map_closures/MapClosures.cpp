@@ -56,7 +56,7 @@ static constexpr int score_type = 0;
 static constexpr int patch_size = 31;
 static constexpr int fast_threshold = 35;
 // fixed parameters for BSHOT
-static constexpr double voxel_grid_size = 0.75;
+static constexpr double voxel_grid_size = 0.5;
 }  // namespace
 
 namespace map_closures {
@@ -236,7 +236,8 @@ ClosureCandidate3D MapClosures::ValidateClosure3D(const int reference_id,
         int number_of_inliers;
         std::vector<PointPair3D> inliers;
         const auto start = std::chrono::high_resolution_clock::now();
-        std::tie(pose3d, number_of_inliers, inliers) = CliRegAlignment3D(keypoint_pairs);
+        std::tie(pose3d, number_of_inliers, inliers) =
+            CliRegAlignment3D(keypoint_pairs, voxel_grid_size * 2);
         const auto end = std::chrono::high_resolution_clock::now();
         closure.alignment_time = std::chrono::duration<double, std::milli>(end - start).count();
         closure.source_id = reference_id;

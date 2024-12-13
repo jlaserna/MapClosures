@@ -94,10 +94,10 @@ public:
 class bshot_extractor {
     double voxel_grid_size;
 
-    pcl::PointCloud<pcl::PointXYZ>::Ptr downsampled_cloud;
-    pcl::PointCloud<pcl::Normal>::Ptr shot_normals;
-    pcl::PointCloud<pcl::PointXYZ>::Ptr shot_keypoints;
-    pcl::PointCloud<pcl::SHOT352>::Ptr shot_descriptors;
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_no_nan;
+    pcl::PointCloud<pcl::Normal>::Ptr normals;
+    pcl::PointCloud<pcl::PointXYZ>::Ptr keypoints;
+    pcl::PointCloud<pcl::SHOT352>::Ptr descriptors;
 
     pcl::NormalEstimationOMP<pcl::PointXYZ, pcl::Normal> normalEstimator;
     pcl::SHOTEstimationOMP<pcl::PointXYZ, pcl::Normal, pcl::SHOT352> shotEstimator;
@@ -108,10 +108,10 @@ public:
     typedef std::shared_ptr<bshot_extractor> Ptr;
 
     bshot_extractor(double voxel_grid_size) : voxel_grid_size(voxel_grid_size) {
-        downsampled_cloud = pcl::PointCloud<pcl::PointXYZ>::Ptr(new pcl::PointCloud<pcl::PointXYZ>);
-        shot_normals = pcl::PointCloud<pcl::Normal>::Ptr(new pcl::PointCloud<pcl::Normal>);
-        shot_keypoints = pcl::PointCloud<pcl::PointXYZ>::Ptr(new pcl::PointCloud<pcl::PointXYZ>);
-        shot_descriptors = pcl::PointCloud<pcl::SHOT352>::Ptr(new pcl::PointCloud<pcl::SHOT352>);
+        cloud_no_nan = pcl::PointCloud<pcl::PointXYZ>::Ptr(new pcl::PointCloud<pcl::PointXYZ>);
+        normals = pcl::PointCloud<pcl::Normal>::Ptr(new pcl::PointCloud<pcl::Normal>);
+        keypoints = pcl::PointCloud<pcl::PointXYZ>::Ptr(new pcl::PointCloud<pcl::PointXYZ>);
+        descriptors = pcl::PointCloud<pcl::SHOT352>::Ptr(new pcl::PointCloud<pcl::SHOT352>);
         tree = pcl::search::KdTree<pcl::PointXYZ>::Ptr(new pcl::search::KdTree<pcl::PointXYZ>);
 
         pcl::console::setVerbosityLevel(pcl::console::L_ERROR);
@@ -119,65 +119,85 @@ public:
 
     void detectAndCompute(const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud,
                           std::vector<BSHOTSignature352> &bshot_descriptors,
-                          std::vector<pcl::PointXYZ> &keypoints) {
-        // Downsample the cloud
+                          std::vector<pcl::PointXYZ> &keyPoints) {
+        bool verbose = false;
+
+        std::cout << "Cloud size: " << cloud->size() << std::endl;
+
+        // Voxelize the input cloud
+        pcl::PointCloud<pcl::PointXYZ>::Ptr voxel_cloud(new pcl::PointCloud<pcl::PointXYZ>);
         voxelGrid.setInputCloud(cloud);
         voxelGrid.setLeafSize(voxel_grid_size, voxel_grid_size, voxel_grid_size);
-        voxelGrid.filter(*downsampled_cloud);
+        voxelGrid.filter(*voxel_cloud);
 
-        double resolution = computeCloudResolution(downsampled_cloud);
+        std::cout << "Voxelized cloud size: " << voxel_cloud->size() << std::endl;
+
+        // Compute the ISS keypoints
+        pcl::ISSKeypoint3D<pcl::PointXYZ, pcl::PointXYZ> issDetector;
+        issDetector.setInputCloud(voxel_cloud);
+        issDetector.setSalientRadius(6 * voxel_grid_size);
+        issDetector.setNonMaxRadius(4 * voxel_grid_size);
+        issDetector.setThreshold21(0.975);
+        issDetector.setThreshold32(0.975);
+        issDetector.setMinNeighbors(5);
+        issDetector.setNumberOfThreads(12);
+        issDetector.compute(*keypoints);
+
+        std::cout << "Keypoints size: " << keypoints->size() << std::endl;
+
+        if (verbose) {
+            pcl::visualization::PCLVisualizer::Ptr viewer(
+                new pcl::visualization::PCLVisualizer("3D Viewer"));
+            pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> keypoints_color_handler(
+                voxel_cloud, 255, 0, 0);
+            viewer->setBackgroundColor(0, 0, 0);
+            viewer->addPointCloud<pcl::PointXYZ>(voxel_cloud, "cloud");
+            viewer->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE,
+                                                     1, "cloud");
+            viewer->addPointCloud<pcl::PointXYZ>(keypoints, keypoints_color_handler, "keypoints");
+            viewer->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE,
+                                                     5, "keypoints");
+            viewer->spin();
+        }
 
         // Calculate the normals
-        normalEstimator.setInputCloud(downsampled_cloud);
-        normalEstimator.setRadiusSearch(resolution * 2);
+        normalEstimator.setInputCloud(voxel_cloud);
+        normalEstimator.setRadiusSearch(2 * voxel_grid_size);
         normalEstimator.setNumberOfThreads(12);
         normalEstimator.setSearchMethod(tree);
-        normalEstimator.compute(*shot_normals);
+        normalEstimator.compute(*normals);
 
         // Remove NaN normals
         std::vector<int> indices;
-        pcl::removeNaNNormalsFromPointCloud(*shot_normals, *shot_normals, indices);
+        pcl::removeNaNNormalsFromPointCloud(*normals, *normals, indices);
 
         // Remove the points with NaN normals
-        pcl::PointCloud<pcl::PointXYZ>::Ptr downsampled_cloud_no_nan(
-            new pcl::PointCloud<pcl::PointXYZ>);
+        cloud_no_nan->clear();
         for (size_t i = 0; i < indices.size(); i++) {
-            downsampled_cloud_no_nan->push_back(downsampled_cloud->points[indices[i]]);
+            cloud_no_nan->push_back(voxel_cloud->points[indices[i]]);
         }
 
-        // Calculate the keypoints (ISS)
-        pcl::ISSKeypoint3D<pcl::PointXYZ, pcl::PointXYZ> issEstimator;
-        issEstimator.setInputCloud(downsampled_cloud_no_nan);
-        issEstimator.setSearchMethod(tree);
-        issEstimator.setSalientRadius(6 * resolution);
-        issEstimator.setNonMaxRadius(4 * resolution);
-        issEstimator.setThreshold21(0.975);
-        issEstimator.setThreshold32(0.975);
-        issEstimator.setMinNeighbors(5);
-        issEstimator.setNumberOfThreads(12);
-        issEstimator.compute(*shot_keypoints);
-
         // Calculate the SHOT descriptors
-        shotEstimator.setInputCloud(shot_keypoints);
-        shotEstimator.setSearchSurface(downsampled_cloud_no_nan);
-        shotEstimator.setInputNormals(shot_normals);
-        shotEstimator.setRadiusSearch(resolution * 4);
+        shotEstimator.setInputCloud(keypoints);
+        shotEstimator.setSearchSurface(cloud_no_nan);
+        shotEstimator.setInputNormals(normals);
+        shotEstimator.setRadiusSearch(4 * voxel_grid_size);
         shotEstimator.setSearchMethod(tree);
         shotEstimator.setNumberOfThreads(12);
-        shotEstimator.compute(*shot_descriptors);
+        shotEstimator.compute(*descriptors);
 
         // Convert the SHOT descriptors to BSHOT descriptors
         bshot_descriptors.clear();
-        bshot_descriptors.reserve(shot_descriptors->size());
-        for (const auto &shot : *shot_descriptors) {
+        bshot_descriptors.reserve(descriptors->size());
+        for (const auto &shot : *descriptors) {
             bshot_descriptors.push_back(BSHOTSignature352(shot));
         }
 
         // Convert the keypoints to pcl::PointXYZ
-        keypoints.clear();
-        keypoints.reserve(shot_keypoints->size());
-        for (const auto &keypoint : *shot_keypoints) {
-            keypoints.push_back(keypoint);
+        keyPoints.clear();
+        keyPoints.reserve(keypoints->size());
+        for (const auto &keypoint : *keypoints) {
+            keyPoints.push_back(keypoint);
         }
 
         assert(bshot_descriptors.size() == keypoints.size());

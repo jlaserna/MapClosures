@@ -109,7 +109,6 @@ Eigen::Isometry3d KabschUmeyamaAlignment3D(
 }
 
 static constexpr double inliers_distance_threshold = 3.0;
-static constexpr double inliers3d_distance_threshold = 0.75;
 static constexpr bool verbose = false;
 
 }  // namespace
@@ -157,7 +156,7 @@ std::tuple<Eigen::Isometry2d, int, std::vector<PointPair2D>> CliRegAlignment2D(
 }
 
 std::tuple<Eigen::Isometry3d, int, std::vector<PointPair3D>> CliRegAlignment3D(
-    const std::vector<PointPair3D> &keypoint_pairs) {
+    const std::vector<PointPair3D> &keypoint_pairs, const double inliers3d_distance_threshold) {
     const size_t max_inliers = keypoint_pairs.size();
 
     ugraph graph;

@@ -35,6 +35,7 @@ std::tuple<Eigen::Isometry2d, int, std::vector<PointPair2D>> CliRegAlignment2D(
     const std::vector<PointPair2D> &keypoint_pairs);
 
 std::tuple<Eigen::Isometry3d, int, std::vector<PointPair3D>> CliRegAlignment3D(
-    const std::vector<PointPair3D> &keypoint_pairs);
+    const std::vector<PointPair3D> &keypoint_pairs,
+    const double inliers3d_distance_threshold = 0.1);
 
 }  // namespace map_closures
