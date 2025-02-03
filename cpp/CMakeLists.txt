@@ -34,10 +34,5 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 include(3rdparty/find_dependencies.cmake)
 
-find_package(PCL 1.12 REQUIRED)
-include_directories(${PCL_INCLUDE_DIRS})
-link_directories(${PCL_LIBRARY_DIRS})
-add_definitions(${PCL_DEFINITIONS})
-
 add_subdirectory(map_closures)
 add_subdirectory(gt_closures)
