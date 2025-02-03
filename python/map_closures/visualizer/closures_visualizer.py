@@ -20,25 +20,27 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
+import warnings
 from dataclasses import dataclass, field
 
 import numpy as np
 from matplotlib import pyplot as plt
-from matplotlib.patches import ConnectionPatch
 from matplotlib.backend_tools import ToolBase, ToolToggleBase
-import warnings
+from matplotlib.patches import ConnectionPatch
 
 warnings.filterwarnings("ignore", category=UserWarning)
-plt.rcParams['toolbar'] = 'toolmanager'
+plt.rcParams["toolbar"] = "toolmanager"
+
 
 class ToggleOutliersTool(ToolToggleBase):
     """
     Tool to toggle the visibility of outliers in the density maps viewer.
     """
-    default_keymap = 'O'
-    description = 'Toggle Outliers'
+
+    default_keymap = "O"
+    description = "Toggle Outliers"
     image = r"icons/outliers.png"
-    
+
     def __init__(self, *args, visualizer, **kwargs):
         super().__init__(*args, **kwargs)
         self.visualizer = visualizer
@@ -46,6 +48,7 @@ class ToggleOutliersTool(ToolToggleBase):
     def trigger(self, sender, event, data=None):
         self.visualizer.show_outliers = not self.visualizer.show_outliers
         self.visualizer.update_connection_visibility()
+
 
 # Button names
 PREV_CLOSURE = "Prev Closure [P]"
@@ -112,13 +115,15 @@ class ClosuresVisualizer:
         # Create data
         self.localmap_data = localmap_data
         self.data = LoopClosureData()
-        
+
         # Initialize connections list for density map viewer
         self.connections = []
         self.show_outliers = False
         self.update_connection_visibility = None
 
-    def update_closures(self, alignment_pose, closure_edge, keypoints_pairs, inliers, alignment_time):
+    def update_closures(
+        self, alignment_pose, closure_edge, keypoints_pairs, inliers, alignment_time
+    ):
         self.data.closure_edges.append(closure_edge)
         self.data.alignment_pose.append(alignment_pose)
         self.data.size += 1
@@ -165,7 +170,7 @@ class ClosuresVisualizer:
         )
         if changed:
             self._ps.get_point_cloud("reference_map").set_enabled(self.states.view_reference)
-            
+
     def _inliers_callback(self):
         changed, self.states.inliers_points_size = self._gui.SliderFloat(
             "##inliers_size", self.states.inliers_points_size, v_min=0.01, v_max=0.6
@@ -178,14 +183,12 @@ class ClosuresVisualizer:
                 self.states.inliers_points_size, relative=False
             )
         self._gui.SameLine()
-        changed, self.states.view_inliers = self._gui.Checkbox(
-            "Inliers", self.states.view_inliers
-        )
+        changed, self.states.view_inliers = self._gui.Checkbox("Inliers", self.states.view_inliers)
         if changed:
             self._ps.get_point_cloud("query_map_inliers").set_enabled(self.states.view_inliers)
             self._ps.get_point_cloud("reference_map_inliers").set_enabled(self.states.view_inliers)
             self._ps.get_curve_network("inliers_edges").set_enabled(self.states.view_inliers)
-            
+
     def _outliers_callback(self):
         changed, self.states.outliers_points_size = self._gui.SliderFloat(
             "##outliers_size", self.states.outliers_points_size, v_min=0.01, v_max=0.6
@@ -203,7 +206,9 @@ class ClosuresVisualizer:
         )
         if changed:
             self._ps.get_point_cloud("query_map_outliers").set_enabled(self.states.view_outliers)
-            self._ps.get_point_cloud("reference_map_outliers").set_enabled(self.states.view_outliers)
+            self._ps.get_point_cloud("reference_map_outliers").set_enabled(
+                self.states.view_outliers
+            )
             self._ps.get_curve_network("outliers_edges").set_enabled(self.states.view_outliers)
 
     def _alignment_callback(self):
@@ -243,8 +248,10 @@ class ClosuresVisualizer:
                 plt.ion()
                 self.fig = plt.figure()
                 self.update_connection_visibility = self._update_connection_visibility
-                self.fig.canvas.manager.toolmanager.add_tool('ToggleOutliers', ToggleOutliersTool, visualizer=self)
-                self.fig.canvas.manager.toolbar.add_tool('ToggleOutliers', 'toolgroup')
+                self.fig.canvas.manager.toolmanager.add_tool(
+                    "ToggleOutliers", ToggleOutliersTool, visualizer=self
+                )
+                self.fig.canvas.manager.toolbar.add_tool("ToggleOutliers", "toolgroup")
                 plt.show(block=False)
                 ax_ref = self.fig.add_subplot(1, 2, 1)
                 ax_ref.set_title("Reference Density Map")
@@ -257,10 +264,14 @@ class ClosuresVisualizer:
                     self.localmap_data.density_maps[query_id], cmap="gray"
                 )
                 keypoints_pairs = self.data.keypoints_pairs[id]
-                inliers = set((tuple(ref_kp), tuple(query_kp)) for ref_kp, query_kp in self.data.inliers[id])
+                inliers = set(
+                    (tuple(ref_kp), tuple(query_kp)) for ref_kp, query_kp in self.data.inliers[id]
+                )
                 alignment_time = self.data.alignment_time[id]
-                self.fig.suptitle(f"Alignment Time: {alignment_time:.2f}ms, Inliers: {len(inliers)}")
-                
+                self.fig.suptitle(
+                    f"Alignment Time: {alignment_time:.2f}ms, Inliers: {len(inliers)}"
+                )
+
                 def is_within_limits(point, ax):
                     xlim = ax.get_xlim()
                     ylim = ax.get_ylim()
@@ -270,44 +281,52 @@ class ClosuresVisualizer:
                     for con, ref_kp, query_kp, is_inlier in self.connections:
                         ref_visible = is_within_limits(ref_kp, ax_ref)
                         query_visible = is_within_limits(query_kp, ax_query)
-                        con.set_visible(ref_visible and query_visible and (is_inlier or self.show_outliers))
+                        con.set_visible(
+                            ref_visible and query_visible and (is_inlier or self.show_outliers)
+                        )
                     self.fig.canvas.draw_idle()
-                    
+
                 self.update_connection_visibility = update_connection_visibility
-                    
+
                 for ref_kp, query_kp in keypoints_pairs:
                     is_inlier = (tuple(ref_kp), tuple(query_kp)) in inliers
                     if is_inlier:
-                        color = 'g'
-                        marker = 'o'
+                        color = "g"
+                        marker = "o"
                         markersize = 5
                         linewidth = 1
                     else:
-                        color = 'r'
-                        marker = 'x'
+                        color = "r"
+                        marker = "x"
                         markersize = 2
                         linewidth = 0.5
                     ax_ref.plot(ref_kp[0], ref_kp[1], marker, color=color, markersize=markersize)
-                    ax_query.plot(query_kp[0], query_kp[1], marker, color=color, markersize=markersize)
+                    ax_query.plot(
+                        query_kp[0], query_kp[1], marker, color=color, markersize=markersize
+                    )
                     con = ConnectionPatch(
-                        xyA=ref_kp, coordsA=ax_ref.transData,
-                        xyB=query_kp, coordsB=ax_query.transData,
-                        color=color, linewidth=linewidth, linestyle='dashed'
+                        xyA=ref_kp,
+                        coordsA=ax_ref.transData,
+                        xyB=query_kp,
+                        coordsB=ax_query.transData,
+                        color=color,
+                        linewidth=linewidth,
+                        linestyle="dashed",
                     )
                     con.set_visible(True)
                     self.fig.add_artist(con)
                     self.connections.append((con, ref_kp, query_kp, is_inlier))
-                    
-                ax_ref.callbacks.connect('xlim_changed', update_connection_visibility)
-                ax_ref.callbacks.connect('ylim_changed', update_connection_visibility)
-                ax_query.callbacks.connect('xlim_changed', update_connection_visibility)
-                ax_query.callbacks.connect('ylim_changed', update_connection_visibility)
-                
+
+                ax_ref.callbacks.connect("xlim_changed", update_connection_visibility)
+                ax_ref.callbacks.connect("ylim_changed", update_connection_visibility)
+                ax_query.callbacks.connect("xlim_changed", update_connection_visibility)
+                ax_query.callbacks.connect("ylim_changed", update_connection_visibility)
+
                 update_connection_visibility()
                 self.matplotlib_eventloop()
             else:
                 plt.close(self.fig)
-                
+
     def _update_connection_visibility(self):
         if self.update_connection_visibility:
             self.update_connection_visibility()
@@ -318,7 +337,11 @@ class ClosuresVisualizer:
         ref_map_pose = self.localmap_data.local_map_poses[ref_id]
         keypoints_pairs = self.data.keypoints_pairs[id]
         inliers = self.data.inliers[id]
-        outliers = [pair for pair in keypoints_pairs if not any(np.array_equal(inlier, pair) for inlier in inliers)]
+        outliers = [
+            pair
+            for pair in keypoints_pairs
+            if not any(np.array_equal(inlier, pair) for inlier in inliers)
+        ]
         query_map_pose = self.localmap_data.local_map_poses[query_id]
         query_map = self._ps.register_point_cloud(
             "query_map",
@@ -375,7 +398,7 @@ class ClosuresVisualizer:
             np.array([[i, i + len(outliers)] for i in range(len(outliers))]),
             color=OUTLIER_COLOR,
             radius=self.states.outliers_points_size / 2000,
-            ),
+        ),
         if self.states.global_view:
             query_map.set_transform(query_map_pose)
             if self.states.align:
