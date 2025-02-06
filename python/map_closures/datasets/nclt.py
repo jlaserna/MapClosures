@@ -21,53 +21,39 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 import glob
-import importlib
 import os
 import sys
 from pathlib import Path
 
-import natsort
 import numpy as np
+import open3d as o3d
 
 
-class ApolloDataset:
+class NCLTDataset:
     def __init__(self, data_dir: Path, *_, **__):
-        try:
-            self.o3d = importlib.import_module("open3d")
-        except ModuleNotFoundError:
-            print(
-                '[ERROR] This dataloader requires open3d but is not installed on your system run "pip install open3d"'
-            )
-            sys.exit(1)
-
-        self.scan_files = natsort.natsorted(glob.glob(f"{data_dir}/pcds/*.pcd"))
-        self.gt_poses = self.read_poses(f"{data_dir}/poses/gt_poses.txt")
         self.sequence_id = os.path.basename(data_dir)
-        self.sequence_dir = os.path.realpath(data_dir)
+        self.sequence_dir = os.path.join(os.path.realpath(data_dir), "")
+        self.local_maps_dir = os.path.join(self.sequence_dir, "MapClosures", "local_maps/")
+
+        self.scan_files = sorted(glob.glob(self.local_maps_dir + "*.ply"))
+        self.scan_timestamps = [int(os.path.basename(t).split(".")[0]) for t in self.scan_files]
+        self.kiss_poses = np.load(os.path.join(self.sequence_dir, "MapClosures", "kiss_poses.npy"))
+
+        self.local_map_scan_index_ranges = np.load(
+            os.path.join(self.sequence_dir, "MapClosures", "local_maps_scan_index_range.npy")
+        )
+        gt_poses_kitti = np.loadtxt(
+            os.path.join(self.sequence_dir, "MapClosures", "gt_poses_kitti.txt")
+        ).reshape(-1, 3, 4)
+        self.gt_poses = np.tile(np.eye(4), (len(gt_poses_kitti), 1, 1))
+        self.gt_poses[:, :3] = gt_poses_kitti
 
     def __len__(self):
         return len(self.scan_files)
 
     def __getitem__(self, idx):
-        return self.get_scan(self.scan_files[idx])
+        return self.read_point_cloud(self.scan_files[idx])
 
-    def get_scan(self, scan_file: str):
-        points = np.asarray(self.o3d.io.read_point_cloud(scan_file).points, dtype=np.float64)
-        return points.astype(np.float64)
-
-    @staticmethod
-    def read_poses(file):
-        from pyquaternion import Quaternion
-
-        data = np.loadtxt(file)
-        _, _, translations, qxyzw = np.split(data, [1, 2, 5], axis=1)
-        rotations = np.array(
-            [Quaternion(x=x, y=y, z=z, w=w).rotation_matrix for x, y, z, w in qxyzw]
-        )
-        poses = np.zeros([rotations.shape[0], 4, 4])
-        poses[:, :3, -1] = translations
-        poses[:, :3, :3] = rotations
-        poses[:, -1, -1] = 1
-        # Convert from global coordinate poses to local poses
-        first_pose = poses[0, :, :]
-        return np.linalg.inv(first_pose) @ poses
+    def read_point_cloud(self, file_path: str):
+        points = o3d.io.read_point_cloud(file_path).points
+        return np.asarray(points, np.float64)

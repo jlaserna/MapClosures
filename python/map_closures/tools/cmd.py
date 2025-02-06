@@ -34,27 +34,6 @@ from map_closures.datasets import (
 )
 
 
-def guess_dataloader(data: Path, default_dataloader: str):
-    """Guess which dataloader to use in case the user didn't specify with --dataloader flag."""
-    if data.is_file():
-        if data.name == "metadata.yaml":
-            return "rosbag", data.parent  # database is in directory, not in .yml
-        if data.name.split(".")[-1] in "bag":
-            return "rosbag", data
-        if data.name.split(".")[-1] == "pcap":
-            return "ouster", data
-        if data.name.split(".")[-1] == "mcap":
-            return "mcap", data
-    elif data.is_dir():
-        if (data / "metadata.yaml").exists():
-            # a directory with a metadata.yaml must be a ROS2 bagfile
-            return "rosbag", data
-        bagfiles = [Path(path) for path in glob.glob(os.path.join(data, "*.bag"))]
-        if len(bagfiles) > 0:
-            return "rosbag", bagfiles
-    return default_dataloader, data
-
-
 def version_callback(value: bool):
     if value:
         try:
@@ -83,10 +62,6 @@ def name_callback(value: str):
 app = typer.Typer(add_completion=False, rich_markup_mode="rich")
 
 _available_dl_help = available_dataloaders()
-_available_dl_help.remove("generic")
-_available_dl_help.remove("mcap")
-_available_dl_help.remove("ouster")
-_available_dl_help.remove("rosbag")
 
 docstring = f"""
 Effectively Detecting Loop Closures using Point Cloud Density Maps\n
@@ -174,8 +149,9 @@ def map_closure_pipeline(
     ),
 ):
     if not dataloader:
-        dataloader, data = guess_dataloader(data, default_dataloader="generic")
-
+        print('[ERROR] You must specify a dataloader "--dataloader"')
+        raise typer.Exit(code=1)
+    
     if dataloader in sequence_dataloaders() and sequence is None:
         print('[ERROR] You must specify a sequence "--sequence"')
         raise typer.Exit(code=1)

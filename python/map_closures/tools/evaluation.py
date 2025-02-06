@@ -37,34 +37,6 @@ class LocalMap:
     pointcloud: np.ndarray
     density_map: np.ndarray
     scan_indices: np.ndarray
-    scan_poses: np.ndarray
-
-
-def compute_closure_indices(
-    ref_indices: np.ndarray,
-    query_indices: np.ndarray,
-    ref_scan_poses: np.ndarray,
-    query_scan_poses: np.ndarray,
-    relative_tf: np.ndarray,
-    distance_threshold: float,
-):
-    T_query_world = inv(query_scan_poses[0])
-    T_ref_world = inv(ref_scan_poses[0])
-
-    # bring all poses to a common frame at the query map
-    query_locs = (T_query_world @ query_scan_poses)[:, :3, -1].squeeze()
-    ref_locs = (relative_tf @ T_ref_world @ ref_scan_poses)[:, :3, -1].squeeze()
-
-    closure_indices = []
-    query_id_start = query_indices[0]
-    ref_id_start = ref_indices[0]
-    qq, rr = np.meshgrid(query_indices, ref_indices)
-    distances = norm(query_locs[qq - query_id_start] - ref_locs[rr - ref_id_start], axis=2)
-    ids = np.where(distances < distance_threshold)
-    for r_id, q_id in zip(ids[0] + ref_id_start, ids[1] + query_id_start):
-        closure_indices.append((r_id, q_id))
-    closure_indices = set(map(lambda x: tuple(sorted(x)), closure_indices))
-    return closure_indices
 
 
 class EvaluationMetrics:
@@ -112,9 +84,12 @@ class EvaluationPipeline(StubEvaluation):
         gt_closures: np.ndarray,
         dataset_name: str,
         closure_distance_threshold: float,
+        odom_poses: np.ndarray,
     ):
         self._dataset_name = dataset_name
         self._closure_distance_threshold = closure_distance_threshold
+
+        self.odom_poses = odom_poses
 
         self.closure_indices_list: List[Set[Tuple]] = []
         self.inliers_count_list: List = []
@@ -128,24 +103,50 @@ class EvaluationPipeline(StubEvaluation):
     def print(self):
         self._log_to_console()
 
+    def _compute_closure_indices(
+        self,
+        ref_indices: np.ndarray,
+        query_indices: np.ndarray,
+        relative_tf: np.ndarray,
+    ):
+        # bring all poses to a common frame at the query map
+        query_poses = (
+            np.linalg.inv(self.odom_poses[query_indices[0]]) @ self.odom_poses[query_indices]
+        )
+        ref_poses = np.linalg.inv(self.odom_poses[ref_indices[0]]) @ self.odom_poses[ref_indices]
+        query_locs = query_poses[:, :3, -1].squeeze()
+        ref_locs = (relative_tf @ ref_poses)[:, :3, -1].squeeze()
+
+        closure_indices = []
+        closure_distances = []
+        query_id_start = query_indices[0]
+        ref_id_start = ref_indices[0]
+        qq, rr = np.meshgrid(query_indices, ref_indices)
+        distances = norm(query_locs[qq - query_id_start] - ref_locs[rr - ref_id_start], axis=2)
+        ids = np.where(distances < self._closure_distance_threshold)
+        for r_id, q_id, distance in zip(
+            ids[0] + ref_id_start, ids[1] + query_id_start, distances[ids]
+        ):
+            if distance < self._closure_distance_threshold:
+                closure_indices.append((r_id, q_id))
+                closure_distances.append(distance)
+        return np.asarray(closure_indices, int)
+
     def append(
         self,
         ref_local_map: LocalMap,
         query_local_map: LocalMap,
         relative_pose: np.ndarray,
-        distance_threshold: float,
         inliers_count: int,
     ):
-        closure_indices = compute_closure_indices(
-            ref_local_map.scan_indices,
-            query_local_map.scan_indices,
-            ref_local_map.scan_poses,
-            query_local_map.scan_poses,
+        closure_indices = self._compute_closure_indices(
+            np.arange(*ref_local_map.scan_indices),
+            np.arange(*query_local_map.scan_indices),
             relative_pose,
-            distance_threshold,
         )
-        self.closure_indices_list.append(closure_indices)
-        self.inliers_count_list.append(inliers_count)
+        if len(closure_indices) > 0:
+            self.closure_indices_list.append(closure_indices)
+            self.inliers_count_list.append(inliers_count)
 
     def compute_closures_and_metrics(
         self,
@@ -157,7 +158,7 @@ class EvaluationPipeline(StubEvaluation):
                 self.closure_indices_list, self.inliers_count_list
             ):
                 if inliers_count >= inliers_threshold:
-                    closures = closures.union(closure_indices)
+                    closures = closures.union(set(map(lambda x: tuple(x), closure_indices)))
 
             tp = len(self.gt_closures.intersection(closures))
             fp = len(closures) - tp

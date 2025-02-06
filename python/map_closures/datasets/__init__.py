@@ -26,23 +26,16 @@ from typing import Dict, List
 
 def supported_file_extensions():
     return [
-        "bin",
-        "pcd",
         "ply",
-        "xyz",
-        "obj",
-        "ctm",
-        "off",
-        "stl",
     ]
 
 
 def sequence_dataloaders():
-    return ["kitti", "helipr"]
+    return ["helipr"]
 
 
 def eval_dataloaders():
-    return ["kitti", "helipr", "mulran", "ncd", "apollo"]
+    return ["helipr", "mulran", "nclt"]
 
 
 def available_dataloaders() -> List:

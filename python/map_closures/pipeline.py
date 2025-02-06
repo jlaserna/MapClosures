@@ -26,10 +26,6 @@ from pathlib import Path
 from typing import Optional
 
 import numpy as np
-from kiss_icp.config import KISSConfig
-from kiss_icp.kiss_icp import KissICP
-from kiss_icp.mapping import get_voxel_hash_map
-from kiss_icp.voxelization import voxel_down_sample
 from tqdm.auto import trange
 
 from map_closures.config import load_config, write_config
@@ -43,6 +39,13 @@ def transform_points(pcd, T):
     R = T[:3, :3]
     t = T[:3, -1]
     return pcd @ R.T + t
+
+
+def pose_inv(T):
+    T_inv = np.eye(4)
+    T_inv[:3, :3] = T[:3, :3].T
+    T_inv[:3, -1] = -T[:3, :3].T @ T[:3, -1]
+    return T_inv
 
 
 class MapClosurePipeline:
@@ -65,27 +68,17 @@ class MapClosurePipeline:
         self._eval = eval
         self._vis = vis
 
-        self.kiss_config = KISSConfig()
-        self.kiss_config.mapping.voxel_size = 1.0
-        self.odometry = KissICP(self.kiss_config)
-        self.voxel_local_map = get_voxel_hash_map(self.kiss_config)
-
         self.closure_config = load_config(config_path)
-        self._map_range = self.closure_config.local_map_factor * self.kiss_config.data.max_range
         self.map_closures = MapClosures(self.closure_config)
 
         self.closures = []
         self.local_maps = []
         self.density_maps = []
-        self.odom_poses = np.zeros((self._n_scans, 4, 4))
+        self.odom_poses = self._dataset.kiss_poses
 
         self.closure_overlap_threshold = 0.5
         self.gt_closures = (
-            generate_gt_closures(
-                self._dataset,
-                self.kiss_config.data.max_range,
-                self.closure_overlap_threshold,
-            )
+            generate_gt_closures(self._dataset)
             if (self._eval and hasattr(self._dataset, "gt_poses"))
             else None
         )
@@ -96,12 +89,13 @@ class MapClosurePipeline:
                 self.gt_closures,
                 self._dataset_name,
                 self.closure_distance_threshold,
+                self.odom_poses,
             )
             if self._eval
             else StubEvaluation()
         )
 
-        self.visualizer = Visualizer() if self._vis else StubVisualizer()
+        self.visualizer = Visualizer(self.odom_poses) if self._vis else StubVisualizer()
 
     def run(self):
         self._run_pipeline()
@@ -113,12 +107,9 @@ class MapClosurePipeline:
         return self.results
 
     def _run_pipeline(self):
-        map_idx = 0
-        poses_in_local_map = []
-        scan_indices_in_local_map = []
+        map_ref_pose = np.eye(4)
 
-        current_map_pose = np.eye(4)
-        for scan_idx in trange(
+        for map_id in trange(
             0,
             self._n_scans,
             ncols=8,
@@ -126,91 +117,55 @@ class MapClosurePipeline:
             dynamic_ncols=True,
             desc="Processing for Loop Closures",
         ):
-            try:
-                frame, timestamps = self._dataset[scan_idx]
-            except ValueError:
-                frame = self._dataset[scan_idx]
-                timestamps = np.zeros(len(frame))
+            local_map = self._dataset[map_id]
+            local_map_start_scan_range = self._dataset.local_map_scan_index_ranges[map_id]
 
-            source, keypoints = self.odometry.register_frame(frame, timestamps)
-            self.odom_poses[scan_idx] = self.odometry.last_pose
-            current_frame_pose = self.odometry.last_pose
+            
+            closure = self.map_closures.match_and_add_3D(map_id, local_map)
 
-            frame_downsample = voxel_down_sample(frame, self.kiss_config.mapping.voxel_size * 0.5)
-            frame_to_map_pose = np.linalg.inv(current_map_pose) @ current_frame_pose
-            self.voxel_local_map.add_points(transform_points(frame_downsample, frame_to_map_pose))
-            self.visualizer.update_registration(
-                frame,
-                self.odometry.local_map.point_cloud(),
-                current_frame_pose,
+            self.local_maps.append(
+                LocalMap(
+                    local_map,
+                    self.map_closures.get_density_map_from_id(map_id),
+                    np.copy(local_map_start_scan_range),
+                )
             )
-
-            if np.linalg.norm(frame_to_map_pose[:3, -1]) > self._map_range or (
-                scan_idx == self._n_scans - 1
-            ):
-                local_map_pointcloud = self.voxel_local_map.point_cloud()
-                #closure = self.map_closures.match_and_add_2D(map_idx, local_map_pointcloud)
-                closure = self.map_closures.match_and_add_3D(map_idx, local_map_pointcloud)
-
-                scan_indices_in_local_map.append(scan_idx)
-                poses_in_local_map.append(current_frame_pose)
-
-                self.local_maps.append(
-                    LocalMap(
-                        local_map_pointcloud,
-                        self.map_closures.get_density_map_from_id(map_idx),
-                        np.copy(scan_indices_in_local_map),
-                        np.copy(poses_in_local_map),
-                    )
+            self.visualizer.update_data(
+                self.local_maps[-1].pointcloud,
+                self.local_maps[-1].density_map,
+                map_ref_pose,
+            )
+            if closure.number_of_inliers > self.closure_config.inliers_threshold:
+                reference_local_map = self.local_maps[closure.source_id]
+                query_local_map = self.local_maps[closure.target_id]
+                self.closures.append(
+                    np.r_[
+                        closure.source_id,
+                        closure.target_id,
+                        reference_local_map.scan_indices[0],
+                        query_local_map.scan_indices[0],
+                        closure.pose.flatten(),
+                        closure.number_of_inliers,
+                        closure.alignment_time,
+                    ]
                 )
-                self.visualizer.update_data(
-                    self.local_maps[-1].pointcloud,
-                    self.local_maps[-1].density_map,
-                    current_map_pose,
+
+                if self._eval:
+                    self.results.append(
+                        reference_local_map,
+                        query_local_map,
+                        closure.pose,
+                        closure.number_of_inliers,
+                    )
+
+                self.visualizer.update_closures(
+                    np.asarray(closure.pose),
+                    [closure.source_id, closure.target_id],
+                    closure.keypoint_pairs,
+                    closure.inliers,
+                    closure.alignment_time,
                 )
-                if closure.number_of_inliers > self.closure_config.inliers_threshold:
-                    reference_local_map = self.local_maps[closure.source_id]
-                    query_local_map = self.local_maps[closure.target_id]
-                    self.closures.append(
-                        np.r_[
-                            closure.source_id,
-                            closure.target_id,
-                            reference_local_map.scan_indices[0],
-                            query_local_map.scan_indices[0],
-                            closure.pose.flatten(),
-                            closure.number_of_inliers,
-                            closure.alignment_time,
-                        ]
-                    )
 
-                    if self._eval:
-                        self.results.append(
-                            reference_local_map,
-                            query_local_map,
-                            closure.pose,
-                            self.closure_distance_threshold,
-                            closure.number_of_inliers,
-                        )
-
-                    self.visualizer.update_closures(
-                        np.asarray(closure.pose), [closure.source_id, closure.target_id], closure.keypoint_pairs, closure.inliers, closure.alignment_time
-                    )
-
-                self.voxel_local_map.remove_far_away_points(frame_to_map_pose[:3, -1])
-                pts_to_keep = self.voxel_local_map.point_cloud()
-                self.voxel_local_map = get_voxel_hash_map(self.kiss_config)
-                self.voxel_local_map.add_points(
-                    transform_points(
-                        pts_to_keep, np.linalg.inv(current_frame_pose) @ current_map_pose
-                    )
-                )
-                current_map_pose = np.copy(current_frame_pose)
-                scan_indices_in_local_map.clear()
-                poses_in_local_map.clear()
-                map_idx += 1
-
-            scan_indices_in_local_map.append(scan_idx)
-            poses_in_local_map.append(current_frame_pose)
 
     def _log_to_file(self):
         np.savetxt(os.path.join(self._results_dir, "map_closures.txt"), np.asarray(self.closures))
@@ -252,24 +207,6 @@ class MapClosurePipeline:
         self._results_dir = self._create_results_dir()
         write_config(self.closure_config, os.path.join(self._results_dir, "config"))
 
-    def _write_data_to_disk(self):
-        import open3d as o3d
-        from matplotlib import pyplot as plt
-
-        local_map_dir = os.path.join(self._results_dir, "local_maps")
-        density_map_dir = os.path.join(self._results_dir, "density_maps")
-        os.makedirs(density_map_dir, exist_ok=True)
-        os.makedirs(local_map_dir, exist_ok=True)
-        for i, local_map in enumerate(self.local_maps):
-            plt.imsave(
-                os.path.join(density_map_dir, f"{i:06d}.png"),
-                255 - local_map.density_map,
-                cmap="gray",
-            )
-            o3d.io.write_point_cloud(
-                os.path.join(local_map_dir, f"{i:06d}.ply"),
-                o3d.geometry.PointCloud(o3d.utility.Vector3dVector(local_map.pointcloud)),
-            )
 
     def _create_results_dir(self) -> Path:
         def get_timestamp() -> str:

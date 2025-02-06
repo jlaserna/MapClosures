@@ -22,45 +22,30 @@
 # SOFTWARE.
 import glob
 import os
-import struct
-import sys
 from pathlib import Path
 
 import numpy as np
+import open3d as o3d
 
 
 class HeLiPRDataset:
     def __init__(self, data_dir: Path, sequence: str, *_, **__):
-        self.sequence_id = sequence
-        self.sequence_dir = os.path.realpath(data_dir)
-        self.scans_dir = os.path.join(self.sequence_dir, "LiDAR", self.sequence_id)
-        self.scan_files = sorted(glob.glob(self.scans_dir + "/*.bin"))
+        self.sequence_id = f"{os.path.basename(data_dir)}_{sequence}"
+        self.data_dir = os.path.realpath(data_dir)
+        self.sequence_dir = os.path.join(self.data_dir, "LiDAR", sequence)
+        self.local_maps_dir = os.path.join(self.sequence_dir, "MapClosures", "local_maps/")
+        self.scan_files = sorted(glob.glob(self.local_maps_dir + "/*.ply"))
 
-        self.gt_file = os.path.join(
-            self.sequence_dir, "LiDAR_GT", f"global_{self.sequence_id}_gt.txt"
+        self.kiss_poses = np.load(os.path.join(self.sequence_dir, "MapClosures", "kiss_poses.npy"))
+        self.local_map_scan_index_ranges = np.load(
+            os.path.join(self.sequence_dir, "MapClosures", "local_maps_scan_index_range.npy")
         )
-        self.gt_poses = self.load_poses(self.gt_file)
 
-        if len(self.scan_files) == 0:
-            raise ValueError(f"Tried to read point cloud files in {data_dir} but none found")
-
-        # Obtain the pointcloud reader for the given data folder
-        if self.sequence_id == "Avia":
-            self.format_string = "fffBBBL"
-            self.intensity_channel = None
-        elif self.sequence_id == "Aeva":
-            self.format_string = "ffffflBf"
-            self.format_string_no_intensity = "ffffflB"
-            self.intensity_channel = 7
-        elif self.sequence_id == "Ouster":
-            self.format_string = "ffffIHHH"
-            self.intensity_channel = 3
-        elif self.sequence_id == "Velodyne":
-            self.format_string = "ffffHf"
-            self.intensity_channel = 3
-        else:
-            print("[ERROR] Unsupported LiDAR Type")
-            sys.exit(1)
+        gt_poses_kitti = np.loadtxt(
+            os.path.join(self.sequence_dir, "MapClosures", "gt_poses_kitti.txt")
+        ).reshape(-1, 3, 4)
+        self.gt_poses = np.tile(np.eye(4), (len(gt_poses_kitti), 1, 1))
+        self.gt_poses[:, :3] = gt_poses_kitti
 
     def __len__(self):
         return len(self.scan_files)
@@ -68,44 +53,7 @@ class HeLiPRDataset:
     def __getitem__(self, idx):
         return self.read_point_cloud(idx)
 
-    def get_data(self, idx: int):
-        file_path = self.scan_files[idx]
-        list_lines = []
-
-        # Special case, see https://github.com/minwoo0611/HeLiPR-File-Player/blob/e8d95e390454ece1415ae9deb51515f63730c10a/src/ROSThread.cpp#L632
-        if self.sequence_id == "Aeva" and int(Path(file_path).stem) <= 1691936557946849179:
-            self.intensity_channel = None
-            format_string = self.format_string_no_intensity
-        else:
-            format_string = self.format_string
-
-        chunk_size = struct.calcsize(f"={format_string}")
-        with open(file_path, "rb") as f:
-            binary = f.read()
-            offset = 0
-            while offset < len(binary):
-                list_lines.append(struct.unpack_from(f"={format_string}", binary, offset))
-                offset += chunk_size
-        data = np.stack(list_lines)
-        return data
-
     def read_point_cloud(self, idx: int):
-        data = self.get_data(idx)
-        points = data[:, :3]
-        return points.astype(np.float64)
-
-    def load_poses(self, poses_file):
-        from pyquaternion import Quaternion
-
-        poses = np.loadtxt(poses_file, delimiter=" ")
-        n = poses.shape[0]
-
-        xyz = poses[:, 1:4]
-        rotations = np.array(
-            [Quaternion(x=x, y=y, z=z, w=w).rotation_matrix for x, y, z, w in poses[:, 4:]]
-        )
-        poses = np.eye(4, dtype=np.float64).reshape(1, 4, 4).repeat(self.__len__(), axis=0)
-        poses[:, :3, :3] = rotations
-        poses[:, :3, 3] = xyz
-
-        return poses
+        file_path = self.scan_files[idx]
+        points = o3d.io.read_point_cloud(file_path).points
+        return np.asarray(points, np.float64)
