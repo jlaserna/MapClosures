@@ -20,9 +20,34 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+# PCL build options and deps
+set(PCL_ALLOW_BOTH_SHARED_AND_STATIC_DEPENDENCIES ON CACHE BOOL "Do not force PCL dependencies to be all shared or all static")
+set(PCL_SHARED_LIBS OFF CACHE BOOL "Build shared libraries")
+set(WITH_OPENGL OFF CACHE BOOL "Support for OpenGL")
+set(WITH_GLEW OFF CACHE BOOL "Support for GLEW")
+set(WITH_VTK OFF CACHE BOOL "Build VTK visualizations")
+set(WITH_QT OFF CACHE BOOL "Support for QT")
+set(WITH_PCAP OFF CACHE BOOL "PCAP file support")
+set(WITH_PNG OFF CACHE BOOL "PNG file support")
+set(WITH_LIBUSB OFF CACHE BOOL "USB RGB-D camera drivers")
+set(WITH_SYSTEM_ZLIB OFF CACHE BOOL "Use system ZLIB")
+set(WITH_CUDA OFF CACHE BOOL "Build NVIDIA-CUDA support")
+set(WITH_SYSTEM_CJSON OFF CACHE BOOL "Use system cJSON")
+set(WITH_QHULL OFF CACHE BOOL "Include convex-hull operations")
+
+# PCL Modules' build options
+set(BUILD_stereo OFF CACHE BOOL "Point cloud stereo library")
+set(BUILD_recognition OFF CACHE BOOL "Point cloud recognition library")
+set(BUILD_tools OFF CACHE BOOL "Point cloud tools library")
+set(BUILD_ml OFF CACHE BOOL "Point cloud ml library")
+set(BUILD_tracking OFF CACHE BOOL "Point cloud tracking library")
+set(BUILD_surface OFF CACHE BOOL "Point cloud surface library")
+set(BUILD_segmentation OFF CACHE BOOL "Point cloud segmentation library")
+
+
 include(FetchContent)
 FetchContent_Declare(
-  pcl URL https://github.com/PointCloudLibrary/pcl/archive/refs/tags/pcl-1.10.1.tar.gz
+  pcl URL https://github.com/PointCloudLibrary/pcl/archive/refs/tags/pcl-1.14.1.tar.gz
   UPDATE_DISCONNECTED 1)
 FetchContent_MakeAvailable(pcl)
 
