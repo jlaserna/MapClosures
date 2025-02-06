@@ -149,7 +149,7 @@ class MapClosurePipeline:
                 scan_idx == self._n_scans - 1
             ):
                 local_map_pointcloud = self.voxel_local_map.point_cloud()
-                #closure = self.map_closures.match_and_add_2D(map_idx, local_map_pointcloud)
+                # closure = self.map_closures.match_and_add_2D(map_idx, local_map_pointcloud)
                 closure = self.map_closures.match_and_add_3D(map_idx, local_map_pointcloud)
 
                 scan_indices_in_local_map.append(scan_idx)
@@ -193,7 +193,11 @@ class MapClosurePipeline:
                         )
 
                     self.visualizer.update_closures(
-                        np.asarray(closure.pose), [closure.source_id, closure.target_id], closure.keypoint_pairs, closure.inliers, closure.alignment_time
+                        np.asarray(closure.pose),
+                        [closure.source_id, closure.target_id],
+                        closure.keypoint_pairs,
+                        closure.inliers,
+                        closure.alignment_time,
                     )
 
                 self.voxel_local_map.remove_far_away_points(frame_to_map_pose[:3, -1])
@@ -213,12 +217,24 @@ class MapClosurePipeline:
             poses_in_local_map.append(current_frame_pose)
 
     def _log_to_file(self):
+        if hasattr(self._dataset, "gt_poses"):
+            np.savetxt(
+                os.path.join(self._results_dir, "gt_poses_kitti.txt"),
+                np.asarray(self._dataset.gt_poses)[:, :3].reshape(-1, 12),
+            )
         np.savetxt(os.path.join(self._results_dir, "map_closures.txt"), np.asarray(self.closures))
         np.savetxt(
             os.path.join(self._results_dir, "kiss_poses_kitti.txt"),
-            np.asarray(self.odom_poses)[:, :3].reshape(-1, 12),
+            self.odom_poses[:, :3].reshape(-1, 12),
         )
-        self.results.log_to_file(self._results_dir)
+        local_maps_scan_index_range = [
+            [local_map.scan_indices[0], local_map.scan_indices[-1]] for local_map in self.local_maps
+        ]
+        np.save(
+            os.path.join(self._results_dir, "local_maps_scan_index_range.npy"),
+            local_maps_scan_index_range,
+        )
+        np.save(os.path.join(self._results_dir, "kiss_poses.npy"), self.odom_poses)
 
     def _log_to_console(self):
         from rich import box
