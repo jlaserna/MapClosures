@@ -24,7 +24,7 @@ SCRIPT_PATH="/tmp/map_closure_commands.sh"
 echo "#!/bin/bash" > $SCRIPT_PATH
 for TOWN in "${TOWNS[@]}"; do
     for SEQUENCE in "${SEQUENCES[@]}"; do
-        echo "map_closure_pipeline --eval --dataloader helipr /data/hdd/dataset/HeLiPR/${TOWN} --sequence ${SEQUENCE} ./output" >> $SCRIPT_PATH
+        echo "map_closure_pipeline --eval --dataloader helipr ./data/HeLiPR/${TOWN} --sequence ${SEQUENCE} ./output --eval --opt" >> $SCRIPT_PATH
     done
 done
 

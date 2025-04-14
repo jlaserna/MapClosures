@@ -1,0 +1,15 @@
+/data/hdd/dataset/HeLiPR/Bak/Bridge02/LiDAR/Aeva/MapClosures
+/data/hdd/dataset/HeLiPR/Bak/Bridge02/LiDAR/Ouster/MapClosures
+/data/hdd/dataset/HeLiPR/Bak/Bridge02/LiDAR/Avia/MapClosures
+/data/hdd/dataset/HeLiPR/Bak/Town01/LiDAR/Aeva/MapClosures
+/data/hdd/dataset/HeLiPR/Bak/Town01/LiDAR/Ouster/MapClosures
+/data/hdd/dataset/HeLiPR/Bak/Town01/LiDAR/Avia/MapClosures
+/data/hdd/dataset/HeLiPR/Bak/Bridge01/LiDAR/Aeva/MapClosures
+/data/hdd/dataset/HeLiPR/Bak/Bridge01/LiDAR/Ouster/MapClosures
+/data/hdd/dataset/HeLiPR/Bak/Bridge01/LiDAR/Avia/MapClosures
+/data/hdd/dataset/HeLiPR/Bak/Town02/LiDAR/Aeva/MapClosures
+/data/hdd/dataset/HeLiPR/Bak/Town02/LiDAR/Ouster/MapClosures
+/data/hdd/dataset/HeLiPR/Bak/Town02/LiDAR/Avia/MapClosures
+/data/hdd/dataset/HeLiPR/Bak/Roundabout01/LiDAR/Aeva/MapClosures
+/data/hdd/dataset/HeLiPR/Bak/Roundabout01/LiDAR/Ouster/MapClosures
+/data/hdd/dataset/HeLiPR/Bak/Roundabout01/LiDAR/Avia/MapClosures
