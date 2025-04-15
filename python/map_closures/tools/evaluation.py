@@ -168,10 +168,10 @@ class EvaluationPipeline(StubEvaluation):
                             )
                         )
 
-            tp = len(self.gt_closures.intersection(closures))
-            fp = len(closures) - tp
-            fn = len(self.gt_closures) - tp
-            self.metrics[i, j] = EvaluationMetrics(tp, fp, fn)()
+                tp = len(self.gt_closures.intersection(closures))
+                fp = len(closures) - tp
+                fn = len(self.gt_closures) - tp
+                self.metrics[i, j] = EvaluationMetrics(tp, fp, fn)()
 
     def _rich_table_pr(self, table_format: box.Box = box.HORIZONTALS) -> Table:
         table = Table(box=table_format)
