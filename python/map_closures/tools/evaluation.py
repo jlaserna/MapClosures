@@ -148,7 +148,7 @@ class EvaluationPipeline(StubEvaluation):
         self,
     ):
         print("[INFO] Computing Loop Closure Evaluation Metrics")
-        for inliers_threshold in range(4, 20):
+        for i, inliers_threshold in enumerate(range(4, 20)):
             for j, distance_threshold in enumerate(
                 np.arange(5, self._closure_distance_threshold + 1, 5)
             ):
