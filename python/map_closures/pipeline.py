@@ -28,7 +28,7 @@ from typing import Optional
 import numpy as np
 from kiss_icp.config import KISSConfig
 from kiss_icp.kiss_icp import KissICP
-from kiss_icp.mapping import get_voxel_hash_map
+from kiss_icp.mapping import VoxelHashMap
 from kiss_icp.voxelization import voxel_down_sample
 from tqdm.auto import trange
 
@@ -60,23 +60,27 @@ class MapClosurePipeline:
             if hasattr(self._dataset, "sequence_id")
             else os.path.basename(self._dataset.data_dir)
         )
-        self._n_scans = len(self._dataset)
-        self._results_dir = results_dir
-        self._eval = eval
         self._vis = vis
+        self._eval = eval
+        self._results_dir = results_dir
+        self._n_scans = len(self._dataset)
+
+        self.closure_config = load_config(config_path)
+        self.map_closures = MapClosures(self.closure_config)
 
         self.kiss_config = KISSConfig()
         self.kiss_config.mapping.voxel_size = 1.0
+        self.kiss_config.data.max_range = 100.0
         self.odometry = KissICP(self.kiss_config)
-        self.voxel_local_map = get_voxel_hash_map(self.kiss_config)
 
-        self.closure_config = load_config(config_path)
-        self._map_range = self.closure_config.local_map_factor * self.kiss_config.data.max_range
-        self.map_closures = MapClosures(self.closure_config)
+        self.voxel_local_map = VoxelHashMap(
+            voxel_size=0.5, max_distance=self.kiss_config.data.max_range, max_points_per_voxel=20
+        )
+
+        self._map_range = self.kiss_config.data.max_range
 
         self.closures = []
         self.local_maps = []
-        self.density_maps = []
         self.odom_poses = np.zeros((self._n_scans, 4, 4))
 
         self.closure_overlap_threshold = 0.5
@@ -90,14 +94,15 @@ class MapClosurePipeline:
             else None
         )
 
-        self.closure_distance_threshold = 6.0
+        self.closure_distance_threshold = 25.0
         self.results = (
             EvaluationPipeline(
                 self.gt_closures,
                 self._dataset_name,
                 self.closure_distance_threshold,
+                self.odom_poses,
             )
-            if self._eval
+            if self._eval and self.gt_closures is not None
             else StubEvaluation()
         )
 
@@ -105,7 +110,7 @@ class MapClosurePipeline:
 
     def run(self):
         self._run_pipeline()
-        self.results.compute_closures_and_metrics()
+        self.results.compute_metrics()
         self._save_config()
         self._log_to_file()
         self._log_to_console()
@@ -114,8 +119,7 @@ class MapClosurePipeline:
 
     def _run_pipeline(self):
         map_idx = 0
-        poses_in_local_map = []
-        scan_indices_in_local_map = []
+        local_map_start_scan_idx = 0
 
         current_map_pose = np.eye(4)
         for scan_idx in trange(
@@ -136,81 +140,66 @@ class MapClosurePipeline:
             self.odom_poses[scan_idx] = self.odometry.last_pose
             current_frame_pose = self.odometry.last_pose
 
-            frame_downsample = voxel_down_sample(frame, self.kiss_config.mapping.voxel_size * 0.5)
             frame_to_map_pose = np.linalg.inv(current_map_pose) @ current_frame_pose
-            self.voxel_local_map.add_points(transform_points(frame_downsample, frame_to_map_pose))
+            self.voxel_local_map.add_points(transform_points(frame, frame_to_map_pose))
             self.visualizer.update_registration(
-                frame,
-                self.odometry.local_map.point_cloud(),
-                current_frame_pose,
+                frame, self.odometry.local_map.point_cloud(), current_frame_pose
             )
 
             if np.linalg.norm(frame_to_map_pose[:3, -1]) > self._map_range or (
                 scan_idx == self._n_scans - 1
             ):
                 local_map_pointcloud = self.voxel_local_map.point_cloud()
-                #closure = self.map_closures.match_and_add_2D(map_idx, local_map_pointcloud)
-                closure = self.map_closures.match_and_add_3D(map_idx, local_map_pointcloud)
-
-                scan_indices_in_local_map.append(scan_idx)
-                poses_in_local_map.append(current_frame_pose)
+                closures = self.map_closures.match_and_add(map_idx, local_map_pointcloud)
 
                 self.local_maps.append(
-                    LocalMap(
-                        local_map_pointcloud,
-                        self.map_closures.get_density_map_from_id(map_idx),
-                        np.copy(scan_indices_in_local_map),
-                        np.copy(poses_in_local_map),
-                    )
+                    LocalMap(local_map_pointcloud, [local_map_start_scan_idx, scan_idx + 1])
                 )
-                self.visualizer.update_data(
-                    self.local_maps[-1].pointcloud,
-                    self.local_maps[-1].density_map,
-                    current_map_pose,
-                )
-                if closure.number_of_inliers > self.closure_config.inliers_threshold:
-                    reference_local_map = self.local_maps[closure.source_id]
-                    query_local_map = self.local_maps[closure.target_id]
-                    self.closures.append(
-                        np.r_[
-                            closure.source_id,
-                            closure.target_id,
-                            reference_local_map.scan_indices[0],
-                            query_local_map.scan_indices[0],
-                            closure.pose.flatten(),
-                            closure.number_of_inliers,
-                            closure.alignment_time,
-                        ]
-                    )
+                self.visualizer.update_data(self.local_maps[-1].pointcloud, current_map_pose)
 
-                    if self._eval:
+                for closure in closures:
+                    if closure.number_of_inliers > self.closure_config.inliers_threshold:
+                        reference_local_map = self.local_maps[closure.source_id]
+                        query_local_map = self.local_maps[closure.target_id]
+                        self.closures.append(
+                            np.r_[
+                                closure.source_id,
+                                closure.target_id,
+                                reference_local_map.scan_indices[0],
+                                query_local_map.scan_indices[0],
+                                closure.pose.flatten(),
+                                closure.number_of_inliers,
+                                closure.alignment_time,
+                            ]
+                        )
+
                         self.results.append(
-                            reference_local_map,
-                            query_local_map,
+                            np.arange(*reference_local_map.scan_indices),
+                            np.arange(*query_local_map.scan_indices),
                             closure.pose,
-                            self.closure_distance_threshold,
                             closure.number_of_inliers,
                         )
 
-                    self.visualizer.update_closures(
-                        np.asarray(closure.pose), [closure.source_id, closure.target_id], closure.keypoint_pairs, closure.inliers, closure.alignment_time
-                    )
+                        self.visualizer.update_closures(
+                            np.asarray(closure.pose),
+                            [closure.source_id, closure.target_id],
+                            closure.keypoint_pairs,
+                            closure.inliers,
+                            closure.alignment_time,
+                        )
 
                 self.voxel_local_map.remove_far_away_points(frame_to_map_pose[:3, -1])
                 pts_to_keep = self.voxel_local_map.point_cloud()
-                self.voxel_local_map = get_voxel_hash_map(self.kiss_config)
+                self.voxel_local_map.clear()
                 self.voxel_local_map.add_points(
                     transform_points(
                         pts_to_keep, np.linalg.inv(current_frame_pose) @ current_map_pose
                     )
                 )
                 current_map_pose = np.copy(current_frame_pose)
-                scan_indices_in_local_map.clear()
-                poses_in_local_map.clear()
+                frame_to_map_pose = np.linalg.inv(current_map_pose) @ current_frame_pose
+                local_map_start_scan_idx = scan_idx
                 map_idx += 1
-
-            scan_indices_in_local_map.append(scan_idx)
-            poses_in_local_map.append(current_frame_pose)
 
     def _log_to_file(self):
         np.savetxt(os.path.join(self._results_dir, "map_closures.txt"), np.asarray(self.closures))
@@ -231,8 +220,6 @@ class MapClosurePipeline:
         table.add_column("# MapClosure", justify="left", style="cyan")
         table.add_column("Ref Map Index", justify="left", style="magenta")
         table.add_column("Query Map Index", justify="left", style="magenta")
-        table.add_column("Relative Translation 2D", justify="right", style="green")
-        table.add_column("Relative Rotation 2D", justify="right", style="green")
         table.add_column("Inliers", justify="right", style="green")
         table.add_column("Alignment Time", justify="right", style="green")
 
@@ -241,8 +228,6 @@ class MapClosurePipeline:
                 f"{i+1}",
                 f"{int(closure[0])}",
                 f"{int(closure[1])}",
-                f"[{closure[7]:.4f}, {closure[11]:.4f}] m",
-                f"{(np.arctan2(closure[8], closure[9]) * 180 / np.pi):.4f} deg",
                 f"{int(closure[20])}",
                 f"{closure[21]:.4f} ms",
             )
@@ -254,18 +239,10 @@ class MapClosurePipeline:
 
     def _write_data_to_disk(self):
         import open3d as o3d
-        from matplotlib import pyplot as plt
 
         local_map_dir = os.path.join(self._results_dir, "local_maps")
-        density_map_dir = os.path.join(self._results_dir, "density_maps")
-        os.makedirs(density_map_dir, exist_ok=True)
         os.makedirs(local_map_dir, exist_ok=True)
         for i, local_map in enumerate(self.local_maps):
-            plt.imsave(
-                os.path.join(density_map_dir, f"{i:06d}.png"),
-                255 - local_map.density_map,
-                cmap="gray",
-            )
             o3d.io.write_point_cloud(
                 os.path.join(local_map_dir, f"{i:06d}.ply"),
                 o3d.geometry.PointCloud(o3d.utility.Vector3dVector(local_map.pointcloud)),
