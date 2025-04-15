@@ -23,8 +23,6 @@
 
 set(SRRG_HBST_HAS_EIGEN true)
 add_definitions(-DSRRG_HBST_HAS_EIGEN)
-set(SRRG_HBST_HAS_OPENCV true)
-add_definitions(-DSRRG_HBST_HAS_OPENCV)
 add_definitions(-DSRRG_MERGE_DESCRIPTORS)
 include(FetchContent)
 FetchContent_Declare(

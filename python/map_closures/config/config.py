@@ -31,11 +31,8 @@ from pydantic import BaseModel
 
 
 class MapClosuresConfig(BaseModel):
-    density_map_resolution: float = 0.5
-    density_threshold: float = 0.05
     hamming_distance_threshold: int = 50
     inliers_threshold: int = 5
-    local_map_factor: float = 1.0
     alignment_algorithm: int = 0
 
 

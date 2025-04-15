@@ -40,14 +40,12 @@ macro(find_external_dependency PACKAGE_NAME TARGET_NAME INCLUDED_CMAKE_PATH)
   endif()
 endmacro()
 
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 find_external_dependency("Eigen3" "Eigen3::Eigen" "${CMAKE_CURRENT_LIST_DIR}/eigen/eigen.cmake")
 find_external_dependency("TBB" "TBB::tbb" "${CMAKE_CURRENT_LIST_DIR}/tbb/tbb.cmake")
-find_external_dependency("OpenCV" "opencv_features2d"
-                         "${CMAKE_CURRENT_LIST_DIR}/opencv/opencv.cmake")
 find_external_dependency("tsl-robin-map" "tsl::robin_map"
                          "${CMAKE_CURRENT_LIST_DIR}/tsl_robin/tsl_robin.cmake")
-find_external_dependency("PCL" "pcl_common" "${CMAKE_CURRENT_LIST_DIR}/pcl/pcl.cmake")
-find_external_dependency("optimization" "graph"
-                         "${CMAKE_CURRENT_LIST_DIR}/optimization/optimization.cmake")
+#find_external_dependency("PCL" "pcl_common" "${CMAKE_CURRENT_LIST_DIR}/pcl/pcl.cmake")
+find_external_dependency("optimization" "graph" "${CMAKE_CURRENT_LIST_DIR}/optimization/optimization.cmake")
 
 include(${CMAKE_CURRENT_LIST_DIR}/hbst/hbst.cmake)

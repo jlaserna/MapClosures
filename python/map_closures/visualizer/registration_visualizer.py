@@ -64,6 +64,14 @@ class RegistrationVisualizer:
         self.trajectory = []
         self.last_frame_pose = I
 
+    def pause_vis(self):
+        self.states.play_mode = False
+        while self.states.block_execution:
+            self._ps.frame_tick()
+            if self.states.play_mode:
+                break
+        self.states.block_execution = not self.states.block_execution
+        
     def update(self, source, local_map, frame_pose):
         self._update(source, local_map, frame_pose)
         self.last_frame_pose = frame_pose

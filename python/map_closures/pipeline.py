@@ -63,17 +63,16 @@ class MapClosurePipeline:
             if hasattr(self._dataset, "sequence_id")
             else os.path.basename(self._dataset.data_dir)
         )
-        self._n_scans = len(self._dataset)
-        self._results_dir = results_dir
-        self._eval = eval
         self._vis = vis
+        self._eval = eval
+        self._results_dir = results_dir
+        self._n_scans = len(self._dataset)
 
         self.closure_config = load_config(config_path)
         self.map_closures = MapClosures(self.closure_config)
 
         self.closures = []
         self.local_maps = []
-        self.density_maps = []
         self.odom_poses = self._dataset.kiss_poses
 
         self.closure_overlap_threshold = 0.5
@@ -83,7 +82,7 @@ class MapClosurePipeline:
             else None
         )
 
-        self.closure_distance_threshold = 6.0
+        self.closure_distance_threshold = 25.0
         self.results = (
             EvaluationPipeline(
                 self.gt_closures,
@@ -99,7 +98,7 @@ class MapClosurePipeline:
 
     def run(self):
         self._run_pipeline()
-        self.results.compute_closures_and_metrics()
+        self.results.compute_metrics()
         self._save_config()
         self._log_to_file()
         self._log_to_console()
@@ -120,53 +119,49 @@ class MapClosurePipeline:
             local_map = self._dataset[map_id]
             local_map_start_scan_range = self._dataset.local_map_scan_index_ranges[map_id]
 
-            
-            closure = self.map_closures.match_and_add_3D(map_id, local_map)
+            closures = self.map_closures.match_and_add(map_id, local_map)
 
             self.local_maps.append(
                 LocalMap(
                     local_map,
-                    self.map_closures.get_density_map_from_id(map_id),
                     np.copy(local_map_start_scan_range),
                 )
             )
             self.visualizer.update_data(
                 self.local_maps[-1].pointcloud,
-                self.local_maps[-1].density_map,
                 map_ref_pose,
             )
-            if closure.number_of_inliers > self.closure_config.inliers_threshold:
-                reference_local_map = self.local_maps[closure.source_id]
-                query_local_map = self.local_maps[closure.target_id]
-                self.closures.append(
-                    np.r_[
-                        closure.source_id,
-                        closure.target_id,
-                        reference_local_map.scan_indices[0],
-                        query_local_map.scan_indices[0],
-                        closure.pose.flatten(),
-                        closure.number_of_inliers,
-                        closure.alignment_time,
-                    ]
-                )
 
-                if self._eval:
+            for closure in closures:
+                if closure.number_of_inliers > self.closure_config.inliers_threshold:
+                    reference_local_map = self.local_maps[closure.source_id]
+                    query_local_map = self.local_maps[closure.target_id]
+                    self.closures.append(
+                        np.r_[
+                            closure.source_id,
+                            closure.target_id,
+                            reference_local_map.scan_indices[0],
+                            query_local_map.scan_indices[0],
+                            closure.pose.flatten(),
+                            closure.number_of_inliers,
+                            closure.alignment_time,
+                        ]
+                    )
+
                     self.results.append(
-                        reference_local_map,
-                        query_local_map,
+                        np.arange(*reference_local_map.scan_indices),
+                        np.arange(*query_local_map.scan_indices),
                         closure.pose,
                         closure.number_of_inliers,
                     )
 
-                self.visualizer.update_closures(
-                    np.asarray(closure.pose),
-                    [closure.source_id, closure.target_id],
-                    closure.keypoint_pairs,
-                    closure.inliers,
-                    closure.alignment_time,
-                )
-
-
+                    self.visualizer.update_closures(
+                        np.asarray(closure.pose),
+                        [closure.source_id, closure.target_id],
+                        closure.alignment_time,
+                    )
+        self.visualizer.pause_vis()
+        
     def _log_to_file(self):
         np.savetxt(os.path.join(self._results_dir, "map_closures.txt"), np.asarray(self.closures))
         np.savetxt(
@@ -186,8 +181,6 @@ class MapClosurePipeline:
         table.add_column("# MapClosure", justify="left", style="cyan")
         table.add_column("Ref Map Index", justify="left", style="magenta")
         table.add_column("Query Map Index", justify="left", style="magenta")
-        table.add_column("Relative Translation 2D", justify="right", style="green")
-        table.add_column("Relative Rotation 2D", justify="right", style="green")
         table.add_column("Inliers", justify="right", style="green")
         table.add_column("Alignment Time", justify="right", style="green")
 
@@ -196,8 +189,6 @@ class MapClosurePipeline:
                 f"{i+1}",
                 f"{int(closure[0])}",
                 f"{int(closure[1])}",
-                f"[{closure[7]:.4f}, {closure[11]:.4f}] m",
-                f"{(np.arctan2(closure[8], closure[9]) * 180 / np.pi):.4f} deg",
                 f"{int(closure[20])}",
                 f"{closure[21]:.4f} ms",
             )
@@ -206,7 +197,6 @@ class MapClosurePipeline:
     def _save_config(self):
         self._results_dir = self._create_results_dir()
         write_config(self.closure_config, os.path.join(self._results_dir, "config"))
-
 
     def _create_results_dir(self) -> Path:
         def get_timestamp() -> str:

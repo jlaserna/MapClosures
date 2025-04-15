@@ -35,7 +35,6 @@ from rich.table import Table
 @dataclass
 class LocalMap:
     pointcloud: np.ndarray
-    density_map: np.ndarray
     scan_indices: np.ndarray
 
 
@@ -60,6 +59,9 @@ class EvaluationMetrics:
         except ZeroDivisionError:
             self.F1 = np.nan
 
+    def __call__(self):
+        return np.r_[self.tp, self.fp, self.fn, self.precision, self.recall, self.F1]
+
 
 class StubEvaluation(ABC):
     def __init__(self):
@@ -71,7 +73,7 @@ class StubEvaluation(ABC):
     def append(self, *kwargs):
         pass
 
-    def compute_closures_and_metrics(self):
+    def compute_metrics(self):
         pass
 
     def log_to_file(self, *kwargs):
@@ -92,10 +94,10 @@ class EvaluationPipeline(StubEvaluation):
         self.odom_poses = odom_poses
 
         self.closure_indices_list: List[Set[Tuple]] = []
+        self.closure_distances_list: List[List[float]] = []
         self.inliers_count_list: List = []
 
-        self.predicted_closures: Dict[int, Set[Tuple[int]]] = {}
-        self.metrics: Dict[int, EvaluationMetrics] = {}
+        self.metrics = np.zeros((16, len(np.arange(5, self._closure_distance_threshold + 1, 5)), 6))
 
         gt_closures = gt_closures if gt_closures.shape[1] == 2 else gt_closures.T
         self.gt_closures: Set[Tuple[int]] = set(map(lambda x: tuple(sorted(x)), gt_closures))
@@ -127,65 +129,57 @@ class EvaluationPipeline(StubEvaluation):
         for r_id, q_id, distance in zip(
             ids[0] + ref_id_start, ids[1] + query_id_start, distances[ids]
         ):
-            if distance < self._closure_distance_threshold:
-                closure_indices.append((r_id, q_id))
-                closure_distances.append(distance)
-        return np.asarray(closure_indices, int)
+            closure_indices.append((r_id, q_id))
+            closure_distances.append(distance)
+        return np.asarray(closure_indices, int), np.asarray(closure_distances)
 
     def append(
-        self,
-        ref_local_map: LocalMap,
-        query_local_map: LocalMap,
-        relative_pose: np.ndarray,
-        inliers_count: int,
+        self, reference_map_scan_indices, query_map_scan_indices, relative_pose, inliers_count
     ):
-        closure_indices = self._compute_closure_indices(
-            np.arange(*ref_local_map.scan_indices),
-            np.arange(*query_local_map.scan_indices),
-            relative_pose,
+        closure_indices, closure_distances = self._compute_closure_indices(
+            reference_map_scan_indices, query_map_scan_indices, relative_pose
         )
         if len(closure_indices) > 0:
             self.closure_indices_list.append(closure_indices)
-            self.inliers_count_list.append(inliers_count)
+            self.closure_distances_list.append(closure_distances)
+            self.inliers_count_list.append([inliers_count] * len(closure_indices))
 
-    def compute_closures_and_metrics(
-        self,
-    ):
+    def compute_metrics(self):
         print("[INFO] Computing Loop Closure Evaluation Metrics")
-        for inliers_threshold in range(5, 15):
-            closures = set()
-            for closure_indices, inliers_count in zip(
-                self.closure_indices_list, self.inliers_count_list
+        for i, inliers_threshold in enumerate(range(4, 20)):
+            for j, distance_threshold in enumerate(
+                np.arange(5, self._closure_distance_threshold + 1, 5)
             ):
-                if inliers_count >= inliers_threshold:
-                    closures = closures.union(set(map(lambda x: tuple(x), closure_indices)))
+                closures = set()
+                for closure_indices, closure_distances, inliers_count in zip(
+                    self.closure_indices_list, self.closure_distances_list, self.inliers_count_list
+                ):
+                    if inliers_count[0] >= inliers_threshold:
+                        closures = closures.union(
+                            set(
+                                map(
+                                    lambda x: tuple(x),
+                                    closure_indices[
+                                        np.where(closure_distances < distance_threshold)
+                                    ],
+                                )
+                            )
+                        )
 
-            tp = len(self.gt_closures.intersection(closures))
-            fp = len(closures) - tp
-            fn = len(self.gt_closures) - tp
-            self.metrics[inliers_threshold] = EvaluationMetrics(tp, fp, fn)
-            self.predicted_closures[inliers_threshold] = closures
+                tp = len(self.gt_closures.intersection(closures))
+                fp = len(closures) - tp
+                fn = len(self.gt_closures) - tp
+                self.metrics[i, j] = EvaluationMetrics(tp, fp, fn)()
 
     def _rich_table_pr(self, table_format: box.Box = box.HORIZONTALS) -> Table:
         table = Table(box=table_format)
         table.caption = f"Loop Closure Evaluation Metrics\n"
-        table.add_column("#Inliers", justify="center", style="cyan")
-        table.add_column("True Positives", justify="center", style="magenta")
-        table.add_column("False Positives", justify="center", style="magenta")
-        table.add_column("False Negatives", justify="center", style="magenta")
-        table.add_column("Precision", justify="left", style="green")
-        table.add_column("Recall", justify="left", style="green")
-        table.add_column("F1 score", justify="left", style="green")
-        for [inliers, metric] in self.metrics.items():
-            table.add_row(
-                f"{inliers}",
-                f"{metric.tp}",
-                f"{metric.fp}",
-                f"{metric.fn}",
-                f"{metric.precision:.4f}",
-                f"{metric.recall:.4f}",
-                f"{metric.F1:.4f}",
-            )
+        table.add_column("Inliers \ Distance (m)", justify="center", style="cyan")
+        for distance_threshold in np.arange(5, self._closure_distance_threshold + 1, 5):
+            table.add_column(f"{distance_threshold}", justify="center", style="magenta")
+        for i, row in enumerate(self.metrics):
+            metrics = [f"{val[-3]:.3f}\n{val[-2]:.3f}\n{val[-1]:.3f}" for val in row]
+            table.add_row(f"{i + 5}", *metrics)
         return table
 
     def _log_to_console(self):
@@ -197,4 +191,13 @@ class EvaluationPipeline(StubEvaluation):
             console = Console(file=logfile, width=100, force_jupyter=False)
             table = self._rich_table_pr(table_format=box.ASCII_DOUBLE_HEAD)
             console.print(table)
-        np.save(os.path.join(results_dir, "scan_level_closures.npy"), self.predicted_closures)
+        np.savetxt(
+            os.path.join(results_dir, "closure_indices.txt"),
+            np.hstack(
+                (
+                    np.concatenate(self.closure_indices_list),
+                    np.concatenate(self.closure_distances_list).reshape(-1, 1),
+                    np.concatenate(self.inliers_count_list).reshape(-1, 1),
+                )
+            ),
+        )
