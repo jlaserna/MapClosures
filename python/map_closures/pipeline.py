@@ -136,7 +136,7 @@ class MapClosurePipeline:
                 frame = self._dataset[scan_idx]
                 timestamps = np.zeros(len(frame))
 
-            source, keypoints = self.odometry.register_frame(frame, timestamps)
+            frame, _ = self.odometry.register_frame(frame, timestamps)
             self.odom_poses[scan_idx] = self.odometry.last_pose
             current_frame_pose = self.odometry.last_pose
 
