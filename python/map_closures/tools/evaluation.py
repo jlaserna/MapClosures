@@ -97,7 +97,7 @@ class EvaluationPipeline(StubEvaluation):
         self.closure_distances_list: List[List[float]] = []
         self.inliers_count_list: List = []
 
-        self.metrics = np.zeros((16, len(np.arange(5, self._closure_distance_threshold + 1, 5)), 6))
+        self.metrics = np.zeros((15, len(np.arange(5, self._closure_distance_threshold + 1, 5)), 6))
 
         gt_closures = gt_closures if gt_closures.shape[1] == 2 else gt_closures.T
         self.gt_closures: Set[Tuple[int]] = set(map(lambda x: tuple(sorted(x)), gt_closures))
@@ -146,7 +146,7 @@ class EvaluationPipeline(StubEvaluation):
 
     def compute_metrics(self):
         print("[INFO] Computing Loop Closure Evaluation Metrics")
-        for i, inliers_threshold in enumerate(range(4, 20)):
+        for i, inliers_threshold in enumerate(range(5, 20)):
             for j, distance_threshold in enumerate(
                 np.arange(5, self._closure_distance_threshold + 1, 5)
             ):
