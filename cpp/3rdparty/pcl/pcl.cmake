@@ -1,6 +1,6 @@
 # MIT License
 #
-# Copyright (c) 2024 Javier Laserna
+# Copyright (c) 2025 Javier Laserna, Saurabh Gupta
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -21,17 +21,34 @@
 # SOFTWARE.
 
 include(FetchContent)
-FetchContent_Declare(pcl URL https://github.com/PointCloudLibrary/pcl/archive/refs/tags/pcl-1.10.1.tar.gz UPDATE_DISCONNECTED 1)
-FetchContent_GetProperties(pcl)
-if(NOT pcl_POPULATED)
-  FetchContent_Populate(pcl)
-  if(${CMAKE_VERSION} GREATER_EQUAL 3.25)
-    add_subdirectory(${pcl_SOURCE_DIR} ${pcl_BINARY_DIR} SYSTEM EXCLUDE_FROM_ALL)
-  else()
-    # Emulate the SYSTEM flag introduced in CMake 3.25. Withouth this flag the compiler will
-    # consider this 3rdparty headers as source code and fail due the -Werror flag.
-    add_subdirectory(${pcl_SOURCE_DIR} ${pcl_BINARY_DIR} EXCLUDE_FROM_ALL)
-    get_target_property(pcl_include_dirs pcl INTERFACE_INCLUDE_DIRECTORIES)
-    set_target_properties(pcl PROPERTIES INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${pcl_include_dirs}")
-  endif()
-endif()
+FetchContent_Declare(
+  pcl URL https://github.com/PointCloudLibrary/pcl/archive/refs/tags/pcl-1.10.1.tar.gz
+  UPDATE_DISCONNECTED 1)
+FetchContent_MakeAvailable(pcl)
+
+add_library(PCL INTERFACE)
+target_link_libraries(
+  PCL
+  INTERFACE pcl_features
+            pcl_filters
+            pcl_keypoints
+            pcl_common
+            pcl_search
+            pcl_kdtree
+            pcl_io
+            pcl_registration)
+
+target_include_directories(
+  PCL
+  INTERFACE ${pcl_SOURCE_DIR}
+            ${pcl_SOURCE_DIR}/features/include
+            ${pcl_SOURCE_DIR}/filters/include
+            ${pcl_SOURCE_DIR}/keypoints/include
+            ${pcl_SOURCE_DIR}/common/include
+            ${pcl_SOURCE_DIR}/search/include
+            ${pcl_SOURCE_DIR}/kdtree/include
+            ${pcl_SOURCE_DIR}/io/include
+            ${pcl_SOURCE_DIR}/registration/include
+            ${pcl_BINARY_DIR}/include/)
+
+set(PCL_LIBS PCL)

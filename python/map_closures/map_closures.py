@@ -38,7 +38,7 @@ class MapClosures:
     def match_and_add_2D(self, map_idx: int, local_map: np.ndarray) -> ClosureCandidate2D:
         pcd = map_closures_pybind._Vector3dVector(local_map)
         return self._pipeline._MatchAndAdd2D(map_idx, pcd)
-    
+
     def match_and_add_3D(self, map_idx: int, local_map: np.ndarray) -> ClosureCandidate3D:
         pcd = map_closures_pybind._Vector3dVector(local_map)
         return self._pipeline._MatchAndAdd3D(map_idx, pcd)
@@ -48,6 +48,6 @@ class MapClosures:
 
     def validate_closure_2D(self, ref_idx: int, query_idx: int) -> ClosureCandidate2D:
         return self._pipeline._ValidateClosure2D(ref_idx, query_idx)
-    
+
     def validate_closure_3D(self, ref_idx: int, query_idx: int) -> ClosureCandidate3D:
         return self._pipeline._ValidateClosure3D(ref_idx, query_idx)
