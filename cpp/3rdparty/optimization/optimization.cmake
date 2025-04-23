@@ -31,7 +31,7 @@ endif()
 FetchContent_Declare(
   optimization
   GIT_REPOSITORY https://$ENV{GITHUB_TOKEN}:x-oauth-basic@github.com/jlaserna/optimization.git
-  GIT_TAG 38556b9d11a03708f83487615c0c40bbe189e4fe)
+  GIT_TAG freeze/mapclosures)
 
 FetchContent_GetProperties(optimization)
 if(NOT optimization_POPULATED)

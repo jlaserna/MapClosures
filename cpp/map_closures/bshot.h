@@ -177,7 +177,7 @@ public:
             keyPoints.push_back(keypoint);
         }
 
-        assert(bshot_descriptors.size() == keypoints.size());
+        assert(bshot_descriptors.size() == keypoints->size());
     }
 
     double computeCloudResolution(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr &cloud) {

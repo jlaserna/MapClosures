@@ -92,6 +92,13 @@ PYBIND11_MODULE(map_closures_pybind, m) {
                  cv::cv2eigen(density_map.grid, density_map_eigen);
                  return density_map_eigen;
              })
+        .def("_MatchAndAdd", [](MapClosures &self, int id, const std::vector<Eigen::Vector3d> &local_map) {
+            auto result = self.MatchAndAdd(id, local_map);
+            return std::visit([](auto &&arg) -> py::object {
+                using T = std::decay_t<decltype(arg)>;
+                return py::cast(arg);
+            }, result);
+        }, "map_id"_a, "local_map"_a)
         .def("_MatchAndAdd2D", &MapClosures::MatchAndAdd2D, "map_id"_a, "local_map"_a)
         .def("_MatchAndAdd3D", &MapClosures::MatchAndAdd3D, "map_id"_a, "local_map"_a)
         .def("_ValidateClosure2D", &MapClosures::ValidateClosure2D, "reference_id"_a, "query_id"_a)

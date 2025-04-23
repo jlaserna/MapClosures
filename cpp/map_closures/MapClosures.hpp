@@ -30,6 +30,7 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include <variant>
 
 #include "AlignCliReg.hpp"
 #include "AlignRansac.hpp"
@@ -49,13 +50,13 @@ using Node3D = srrg_hbst::BinaryNode<Matchable3D>;
 using Tree3D = srrg_hbst::BinaryTree<Node3D>;
 
 namespace map_closures {
-enum class AlignmentAlgorithm { RANSAC, CLIREG };
+enum class AlignmentAlgorithm { RANSAC2D, CLIREG2D, RANSAC3D, CLIREG3D };
 struct Config {
     float density_map_resolution = 0.5;
     float density_threshold = 0.05;
     int hamming_distance_threshold = 50;
     double voxel_grid_size = 0.1;
-    AlignmentAlgorithm alignment_algorithm = AlignmentAlgorithm::RANSAC;
+    AlignmentAlgorithm alignment_algorithm = AlignmentAlgorithm::RANSAC2D;
 };
 
 struct ClosureCandidate2D {
@@ -78,12 +79,15 @@ struct ClosureCandidate3D {
     double alignment_time = 0.0;
 };
 
+using ClosureCandidate = std::variant<ClosureCandidate2D, ClosureCandidate3D>;
+
 class MapClosures {
 public:
     explicit MapClosures();
     explicit MapClosures(const Config &config);
     ~MapClosures() = default;
 
+    ClosureCandidate MatchAndAdd(const int id, const std::vector<Eigen::Vector3d> &local_map);
     ClosureCandidate2D MatchAndAdd2D(const int id, const std::vector<Eigen::Vector3d> &local_map);
     ClosureCandidate3D MatchAndAdd3D(const int id, const std::vector<Eigen::Vector3d> &local_map);
     ClosureCandidate2D ValidateClosure2D(const int reference_id, const int query_id) const;

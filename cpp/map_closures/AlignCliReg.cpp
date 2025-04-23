@@ -239,7 +239,7 @@ ret_t cliqueGraphRun(ugraph graph,
     ////
     clqo::param_t param;
     param.tout = info.TIME_LIMIT;
-    param.tout_heur = all_info.TIME_LIMIT_HEUR;
+    param.tout_heur = info.TIME_LIMIT_HEUR;
 
     // Sorting strategy
     if (info.id_sorting_alg_called == 0) {

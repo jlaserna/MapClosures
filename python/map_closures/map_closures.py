@@ -22,18 +22,24 @@
 # SOFTWARE.
 import numpy as np
 from typing_extensions import TypeAlias
+from typing import Union
 
 from map_closures.config import MapClosuresConfig
 from map_closures.pybind import map_closures_pybind
 
 ClosureCandidate2D: TypeAlias = map_closures_pybind._ClosureCandidate2D
 ClosureCandidate3D: TypeAlias = map_closures_pybind._ClosureCandidate3D
+ClosureCandidate = Union[ClosureCandidate2D, ClosureCandidate3D]
 
 
 class MapClosures:
     def __init__(self, config: MapClosuresConfig = MapClosuresConfig()):
         self._config = config
         self._pipeline = map_closures_pybind._MapClosures(self._config.model_dump())
+
+    def match_and_add(self, map_idx: int, local_map: np.ndarray) -> ClosureCandidate:
+        pcd = map_closures_pybind._Vector3dVector(local_map)
+        return self._pipeline._MatchAndAdd(map_idx, pcd)
 
     def match_and_add_2D(self, map_idx: int, local_map: np.ndarray) -> ClosureCandidate2D:
         pcd = map_closures_pybind._Vector3dVector(local_map)

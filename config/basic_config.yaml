@@ -3,3 +3,4 @@ density_threshold: 0.05
 hamming_distance_threshold: 50
 inliers_threshold: 5
 local_map_factor: 1.0             # Local Map size as a multiple of the maximum range of the LiDAR
+alignment_algorithm: 2        # 0: RANSAC2D, 1: CliReg2D, 2: RANSAC3D, 3: CliReg3D

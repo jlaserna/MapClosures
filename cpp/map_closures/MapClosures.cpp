@@ -74,6 +74,18 @@ MapClosures::MapClosures(const Config &config) : config_(config) {
     bshot_extractor_ = std::make_shared<BSHOT::bshot_extractor>(voxel_grid_size);
 }
 
+ClosureCandidate MapClosures::MatchAndAdd(const int id, const std::vector<Eigen::Vector3d> &local_map) {
+    if (config_.alignment_algorithm == AlignmentAlgorithm::RANSAC2D ||
+        config_.alignment_algorithm == AlignmentAlgorithm::CLIREG2D) {
+        return MatchAndAdd2D(id, local_map);
+    } else if (config_.alignment_algorithm == AlignmentAlgorithm::RANSAC3D ||
+               config_.alignment_algorithm == AlignmentAlgorithm::CLIREG3D) {
+        return MatchAndAdd3D(id, local_map);
+    } else {
+        throw std::runtime_error("Invalid alignment algorithm");
+    }
+}
+
 ClosureCandidate2D MapClosures::MatchAndAdd2D(const int id,
                                               const std::vector<Eigen::Vector3d> &local_map) {
     local_maps_.emplace(id, local_map);
@@ -136,11 +148,11 @@ ClosureCandidate2D MapClosures::ValidateClosure2D(const int reference_id,
         std::vector<PointPair2D> inliers;
         const auto start = std::chrono::high_resolution_clock::now();
         switch (config_.alignment_algorithm) {
-            case AlignmentAlgorithm::RANSAC: {
+            case AlignmentAlgorithm::RANSAC2D: {
                 std::tie(pose2d, number_of_inliers, inliers) = RansacAlignment2D(keypoint_pairs);
                 break;
             }
-            case AlignmentAlgorithm::CLIREG: {
+            case AlignmentAlgorithm::CLIREG2D: {
                 std::tie(pose2d, number_of_inliers, inliers) = CliRegAlignment2D(keypoint_pairs);
                 break;
             }
@@ -236,8 +248,16 @@ ClosureCandidate3D MapClosures::ValidateClosure3D(const int reference_id,
         int number_of_inliers;
         std::vector<PointPair3D> inliers;
         const auto start = std::chrono::high_resolution_clock::now();
-        std::tie(pose3d, number_of_inliers, inliers) =
-            CliRegAlignment3D(keypoint_pairs, voxel_grid_size * 2);
+        switch (config_.alignment_algorithm) {
+            case AlignmentAlgorithm::RANSAC3D: {
+                std::tie(pose3d, number_of_inliers, inliers) = RansacAlignment3D(keypoint_pairs, voxel_grid_size * 2);
+                break;
+            }
+            case AlignmentAlgorithm::CLIREG3D: {
+                std::tie(pose3d, number_of_inliers, inliers) = CliRegAlignment3D(keypoint_pairs, voxel_grid_size * 2);
+                break;
+            }
+        }
         const auto end = std::chrono::high_resolution_clock::now();
         closure.alignment_time = std::chrono::duration<double, std::milli>(end - start).count();
         closure.source_id = reference_id;
