@@ -37,6 +37,7 @@ std::tuple<Eigen::Isometry2d, int, std::vector<PointPair2D>> RansacAlignment2D(
 
 std::tuple<Eigen::Isometry3d, int, std::vector<PointPair3D>> RansacAlignment3D(
     const std::vector<PointPair3D> &keypoint_pairs,
-    const double inliers3d_distance_threshold = 0.1);
+    const double inliers3d_distance_threshold = 0.1,
+    const bool exhaustive = false);
 
 }  // namespace map_closures

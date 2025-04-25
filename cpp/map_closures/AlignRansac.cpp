@@ -160,7 +160,8 @@ std::tuple<Eigen::Isometry2d, int, std::vector<PointPair2D>> RansacAlignment2D(
 
 std::tuple<Eigen::Isometry3d, int, std::vector<PointPair3D>> RansacAlignment3D(
     const std::vector<PointPair3D> &keypoint_pairs,
-    const double inliers3d_distance_threshold) {
+    const double inliers3d_distance_threshold,
+    const bool exhaustive) {
     const size_t max_inliers = keypoint_pairs.size();
 
     std::vector<PointPair3D> sample_keypoint_pairs(3);
@@ -171,24 +172,50 @@ std::tuple<Eigen::Isometry3d, int, std::vector<PointPair3D>> RansacAlignment3D(
     optimal_inlier_indices.reserve(max_inliers);
 
     int iter = 0;
-    while (iter++ < __RANSAC_TRIALS_3D__) {
-        inlier_indices.clear();
+    if (exhaustive) {
+        for (size_t i = 0; i < keypoint_pairs.size(); ++i) {
+            for (size_t j = i + 1; j < keypoint_pairs.size(); ++j) {
+                for (size_t k = j + 1; k < keypoint_pairs.size(); ++k) {
+                    std::vector<PointPair3D> sample_keypoint_pairs = {
+                        keypoint_pairs[i], keypoint_pairs[j], keypoint_pairs[k]};
+                    auto T = KabschUmeyamaAlignment3D(sample_keypoint_pairs);
+                    inlier_indices.clear();
 
-        std::sample(keypoint_pairs.begin(), keypoint_pairs.end(),
-                    sample_keypoint_pairs.begin(), 3, std::mt19937{std::random_device{}()});
-        auto T = KabschUmeyamaAlignment3D(sample_keypoint_pairs);
+                    int index = 0;
+                    std::for_each(keypoint_pairs.cbegin(), keypoint_pairs.cend(),
+                                  [&](const auto &keypoint_pair) {
+                                      if ((T * keypoint_pair.ref - keypoint_pair.query).norm() <
+                                          inliers3d_distance_threshold)
+                                          inlier_indices.emplace_back(index);
+                                      index++;
+                                  });
 
-        int index = 0;
-        std::for_each(keypoint_pairs.cbegin(), keypoint_pairs.cend(),
-                    [&](const auto &keypoint_pair) {
-                        if ((T * keypoint_pair.ref - keypoint_pair.query).norm() <
-                            inliers3d_distance_threshold)
-                            inlier_indices.emplace_back(index);
-                        index++;
-                    });
+                    if (inlier_indices.size() > optimal_inlier_indices.size()) {
+                        optimal_inlier_indices = inlier_indices;
+                    }
+                }
+            }
+        }
+    } else {
+        while (iter++ < __RANSAC_TRIALS_3D__) {
+            inlier_indices.clear();
 
-        if (inlier_indices.size() > optimal_inlier_indices.size()) {
-            optimal_inlier_indices = inlier_indices;
+            std::sample(keypoint_pairs.begin(), keypoint_pairs.end(), sample_keypoint_pairs.begin(),
+                        3, std::mt19937{std::random_device{}()});
+            auto T = KabschUmeyamaAlignment3D(sample_keypoint_pairs);
+
+            int index = 0;
+            std::for_each(keypoint_pairs.cbegin(), keypoint_pairs.cend(),
+                          [&](const auto &keypoint_pair) {
+                              if ((T * keypoint_pair.ref - keypoint_pair.query).norm() <
+                                  inliers3d_distance_threshold)
+                                  inlier_indices.emplace_back(index);
+                              index++;
+                          });
+
+            if (inlier_indices.size() > optimal_inlier_indices.size()) {
+                optimal_inlier_indices = inlier_indices;
+            }
         }
     }
 
@@ -200,8 +227,8 @@ std::tuple<Eigen::Isometry3d, int, std::vector<PointPair3D>> RansacAlignment3D(
     auto T = KabschUmeyamaAlignment3D(inlier_keypoint_pairs);
 
     std::vector<PointPair3D> inliers(num_inliers);
-    std::transform(optimal_inlier_indices.cbegin(), optimal_inlier_indices.cend(),
-                   inliers.begin(), [&](const auto index) { return keypoint_pairs[index]; });
+    std::transform(optimal_inlier_indices.cbegin(), optimal_inlier_indices.cend(), inliers.begin(),
+                   [&](const auto index) { return keypoint_pairs[index]; });
 
     return {T, num_inliers, inliers};
 }
